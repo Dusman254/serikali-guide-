@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <rect width="1200" height="630" fill="#141413"/>
+  <rect x="40" y="40" width="1120" height="550" fill="#F4F3EF" stroke="#141413" stroke-width="4"/>
+  <rect x="60" y="60" width="1080" height="8" fill="#D94E34"/>
+  
+  <!-- Brand Header -->
+  <text x="100" y="150" font-family="'JetBrains Mono', monospace" font-size="20" letter-spacing="4" fill="#6E6D68" font-weight="600">REPUBLIC OF KENYA · CIVIC &amp; REGULATORY PLATFORM</text>
+  
+  <text x="100" y="240" font-family="'Instrument Serif', serif" font-size="78" fill="#141413" font-weight="700">SERIKALI GUIDE</text>
+  
+  <!-- Tagline with red border -->
+  <text x="100" y="320" font-family="'Instrument Serif', serif" font-size="46" fill="#141413">
+    Your one <tspan fill="#D94E34">border</tspan> stop post.
+  </text>
+  
+  <text x="100" y="390" font-family="'Plus Jakarta Sans', sans-serif" font-size="24" fill="#5E5D59">
+    Verified Procedural Guides: Immigration, Visas, Work Permits, Business BRS, NGOs, &amp; KRA Tax.
+  </text>
+  
+  <!-- Pill Badges -->
+  <g transform="translate(100, 450)">
+    <rect width="180" height="44" fill="#141413"/>
+    <text x="90" y="28" font-family="'JetBrains Mono', monospace" font-size="14" fill="#F4F3EF" text-anchor="middle" font-weight="600">eCitizen Portal</text>
+  </g>
+  <g transform="translate(300, 450)">
+    <rect width="180" height="44" fill="#EAE9E4" stroke="#141413" stroke-width="1.5"/>
+    <text x="90" y="28" font-family="'JetBrains Mono', monospace" font-size="14" fill="#141413" text-anchor="middle" font-weight="600">BRS Company Reg</text>
+  </g>
+  <g transform="translate(500, 450)">
+    <rect width="180" height="44" fill="#EAE9E4" stroke="#141413" stroke-width="1.5"/>
+    <text x="90" y="28" font-family="'JetBrains Mono', monospace" font-size="14" fill="#141413" text-anchor="middle" font-weight="600">eFNS Work Permits</text>
+  </g>
+  <g transform="translate(700, 450)">
+    <rect width="180" height="44" fill="#EAE9E4" stroke="#141413" stroke-width="1.5"/>
+    <text x="90" y="28" font-family="'JetBrains Mono', monospace" font-size="14" fill="#141413" text-anchor="middle" font-weight="600">KRA Tax Filing</text>
+  </g>
+
+  <!-- Footer url -->
+  <text x="100" y="550" font-family="'JetBrains Mono', monospace" font-size="18" fill="#141413" font-weight="600">https://serikaliguide.co.ke</text>
+  <text x="1060" y="550" font-family="'JetBrains Mono', monospace" font-size="16" fill="#6E6D68" text-anchor="end">Nairobi CBD, Kenya</text>
+</svg>

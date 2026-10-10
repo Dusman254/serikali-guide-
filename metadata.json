@@ -1,0 +1,8 @@
+{
+  "name": "Serikali Guide",
+  "description": "Kenya Immigration & Regulatory Services Discovery, Procedural Assistance, and Document Clearance Platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

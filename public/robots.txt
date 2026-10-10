@@ -1,0 +1,9 @@
+# Robots.txt for Serikali Guide (https://serikaliguide.co.ke)
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+
+# Host and Sitemap
+Host: https://serikaliguide.co.ke
+Sitemap: https://serikaliguide.co.ke/sitemap.xml
