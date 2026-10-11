@@ -82,6 +82,9 @@ export const EDITORIAL_IMAGES = {
   immigration: '/src/assets/images/serikali_immigration_visas_1790882120216.jpg',
   business: '/src/assets/images/serikali_business_registration_1790882133145.jpg',
   ngo: '/src/assets/images/serikali_ngo_governance_1790882145611.jpg',
+  tax: '/src/assets/images/serikali_tax_ecitizen_1790882155795.jpg',
+  licences: '/src/assets/images/serikali_licences_permits_1791740074361.jpg',
+  documents: '/src/assets/images/serikali_land_documents_1791740090187.jpg',
   taxAndDocs: '/src/assets/images/serikali_tax_ecitizen_1790882155795.jpg',
 };
 
@@ -696,7 +699,7 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     description:
       'Step-by-step assistance for citizens and diaspora applicants obtaining or replacing vital civil registration documents, e-Passports, Certificates of Good Conduct (DCI), and National Identity cards.',
     agency: 'Civil Registration Services · Directorate of Immigration · DCI',
-    heroImage: EDITORIAL_IMAGES.taxAndDocs,
+    heroImage: EDITORIAL_IMAGES.documents,
     subCategories: [
       {
         id: 'passport',
@@ -902,7 +905,7 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     description:
       'Navigate Kenya’s multi-agency regulatory landscape—from County Single Business Permits and NEMA Environmental Licences to NCA, EPRA, CBK, CAK, Pharmacy & Poisons Board, and Tourism Regulatory Authority permits.',
     agency: 'County Governments · NEMA · NCA · Sector Regulators',
-    heroImage: EDITORIAL_IMAGES.business,
+    heroImage: EDITORIAL_IMAGES.licences,
     subCategories: [
       {
         id: 'business-permits-lic',

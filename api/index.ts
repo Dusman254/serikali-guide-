@@ -2,6 +2,11 @@ import express, { Request, Response, NextFunction } from "express";
 import fs from "fs";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
+import {
+  getRegulatoryKnowledgeForTopic,
+  synthesizeAuthoritativeBlog,
+  synthesizeAuthoritativeService,
+} from "./regulatoryKnowledge";
 
 export interface BlogPost {
   id: string;
@@ -713,115 +718,11 @@ function ensureUniqueSlug(desiredSlug: string, currentId?: string): string {
 }
 
 function buildFallbackBlog(topic: string, categoryId?: string) {
-  const cleanTopic = topic.trim();
-  const lower = cleanTopic.toLowerCase();
-
-  let catId = categoryId || "immigration-visas";
-  let catName = "Immigration & Expatriate Visas";
-  let portal = "fns.immigration.go.ke";
-
-  if (lower.includes("company") || lower.includes("business") || lower.includes("cr12") || lower.includes("brs") || lower.includes("incorporat")) {
-    catId = "business-registration";
-    catName = "Business & Company Registration";
-    portal = "brs.ecitizen.go.ke";
-  } else if (lower.includes("ngo") || lower.includes("nonprofit") || lower.includes("pbo") || lower.includes("charity")) {
-    catId = "ngo-nonprofit";
-    catName = "NGO & Nonprofit Registration";
-    portal = "pbo.ecitizen.go.ke";
-  } else if (lower.includes("tax") || lower.includes("kra") || lower.includes("tcc") || lower.includes("itax")) {
-    catId = "tax-compliance";
-    catName = "Tax & Statutory Compliance";
-    portal = "itax.kra.go.ke";
-  } else if (lower.includes("permit") || lower.includes("licen") || lower.includes("nca") || lower.includes("nema") || lower.includes("odpc")) {
-    catId = "licences-permits";
-    catName = "Licences & Permits";
-    portal = "business.ecitizen.go.ke";
-  } else if (lower.includes("land") || lower.includes("title") || lower.includes("ardhisasa") || lower.includes("passport")) {
-    catId = "government-documents";
-    catName = "Government Documents";
-    portal = "accounts.ecitizen.go.ke";
-  } else if (lower.includes("invest") || lower.includes("relocat") || lower.includes("property")) {
-    catId = "investment-relocation";
-    catName = "Investment & Relocation";
-    portal = "keninvest.go.ke";
-  }
-
-  return {
-    title: cleanTopic + ": Complete 2026 Kenya Statutory & Procedural Guide",
-    subtitle: "Verified compliance steps, official portal requirements, timelines, and legal filing criteria in Kenya.",
-    categoryId: catId,
-    categoryName: catName,
-    subCategoryName: cleanTopic,
-    excerpt: "Comprehensive 2026 procedural dossier covering eligibility criteria, official filing portals, and statutory vetting steps for " + cleanTopic + " under the Republic of Kenya regulatory framework.",
-    officialPortal: portal,
-    readTime: "6 min read",
-    author: "Serikali Editorial & Legal Desk",
-    authorRole: "Senior Regulatory Specialist",
-    keyTakeaways: [
-      "Mandatory electronic registration and identity verification through official Republic of Kenya portals.",
-      "Statutory vetting and processing timeline averages 2 to 6 weeks upon submission of compliant documents.",
-      "All official government processing fees must generate an authenticated Payment Reference Number (PRN).",
-      "Retention of certified physical and digital dossiers is required for administrative audits.",
-    ],
-    sectionHeading: "1. Verified Procedural Steps & Statutory Requirements for " + cleanTopic,
-    sectionBody: "Navigating " + cleanTopic + " requires strict alignment with the relevant laws of Kenya and current ministerial circulars.\n\nAll applications are initiated digitally via the designated official government portal (" + portal + "). Applicants must verify that certified supporting affidavits, tax clearances, and identity credentials match official civil registry records before submission.\n\nFollowing electronic submission, the dossier undergoes ministerial review, inter-agency security vetting, and gazette verification where mandated. Successful applicants receive electronic notification along with statutory certificates or endorsements bearing official QR verification codes.",
-    checklist: [
-      "Certified copy of National ID / Valid Passport Bio-data page",
-      "Valid KRA PIN Certificate with up-to-date Tax Compliance status",
-      "Notarized statutory declarations or board resolutions where applicable",
-      "Official Payment Reference Number (PRN) receipt with eCitizen verification",
-      "Passport-sized photographs conforming to ICAO biometric specifications",
-    ],
-    callout: "Important Advisory: Always complete your filing on official .go.ke portals (" + portal + "). Do not remit payments to personal M-Pesa till numbers or unverified intermediaries.",
-    metaTitle: cleanTopic + " Guide Kenya 2026 | Serikali Guide",
-    metaDescription: "Comprehensive 2026 statutory guide for " + cleanTopic + " in Kenya. Discover official portals, required documents, fee structures, and step-by-step procedures.",
-    keywords: [cleanTopic.toLowerCase(), "kenya government", "ecitizen", "statutory filing", "2026 compliance"],
-  };
+  return synthesizeAuthoritativeBlog(topic, categoryId);
 }
 
 function buildFallbackService(topic: string) {
-  const cleanTopic = topic.trim();
-  return {
-    name: cleanTopic,
-    shortLabel: cleanTopic.split(" ").slice(0, 2).join(" "),
-    agencyBadge: "GOVERNMENT PORTAL",
-    agency: "Republic of Kenya · Regulatory & Compliance Desk for " + cleanTopic,
-    heroSubtitle: "Official procedures, licensing prerequisites, gazetted statutory fees, and verified timelines in Kenya.",
-    editorialHeadline: cleanTopic + " — Official Kenyan Procedures, Permits & Compliance.",
-    overview: cleanTopic + " encompasses statutory registration, operational compliance, and regulatory oversight administered under the laws of Kenya. Stakeholders must comply with mandatory documentation and annual returns.",
-    metaTitle: cleanTopic + " in Kenya — Official Requirements & Guide | Serikali",
-    metaDescription: "Complete statutory requirements, application portals, timelines, and fees for " + cleanTopic + " in Kenya. Official regulatory guidance.",
-    subCategories: [
-      {
-        name: "Standard " + cleanTopic + " Registration & Filing",
-        summary: "Initial statutory registration, regulatory documentation, and compliance lodgement on the official portal.",
-        portal: "ecitizen.go.ke",
-        timeline: "2 to 4 weeks",
-        statutoryNote: "Governed by Kenyan Statutory Framework & Ministerial Directives",
-        feeNote: "Official Gazetted Statutory Fee",
-        requirements: [
-          "Valid National ID or Passport bio-data page",
-          "Up-to-date KRA PIN with Tax Compliance Certificate",
-          "Completed official application form with certified annexures",
-          "Payment Reference Number (PRN) confirmation receipt",
-        ],
-        steps: [
-          {
-            title: "Step 1: Digital Account & Profile Setup",
-            detail: "Create or sign into the official portal using verified government Single Sign-On credentials.",
-          },
-          {
-            title: "Step 2: Document Verification & Upload",
-            detail: "Upload certified PDFs of all prerequisites conforming to gazetted document standards.",
-          },
-          {
-            title: "Step 3: Fee Payment & Tracking",
-            detail: "Generate official PRN on eCitizen, remit payment, and monitor processing in real time.",
-          },
-        ],
-      },
-    ],
-  };
+  return synthesizeAuthoritativeService(topic);
 }
 
 export const router = express.Router();
@@ -999,12 +900,106 @@ router.post("/upload/image", requireAdmin, (req: Request, res: Response) => {
       res.status(400).json({ error: "Base64 image data is required." });
       return;
     }
+    const cleanContentType = contentType || "image/jpeg";
+    const base64Data = data.includes(",") ? data.split(",")[1] : data;
+    const buffer = Buffer.from(base64Data, "base64");
     const id = "img-" + Date.now() + "-" + Math.random().toString(36).substring(2, 8);
-    const url = "/uploads/" + id + ".jpg";
-    res.status(201).json({ id, url, alt: alt || "Uploaded regulatory illustration" });
+    const ext = cleanContentType.includes("png") ? "png" : cleanContentType.includes("webp") ? "webp" : "jpg";
+    const filename = `${id}.${ext}`;
+
+    mediaCache.set(id, {
+      id,
+      contentType: cleanContentType,
+      buffer,
+      alt: alt || "Uploaded regulatory illustration",
+      createdAt: new Date().toISOString(),
+    });
+
+    // Also persist to /tmp for cross-process/lambda persistence
+    try {
+      const tmpFile = path.resolve("/tmp", filename);
+      fs.writeFileSync(tmpFile, buffer);
+    } catch {}
+
+    // Try writing to public/uploads directory for static serving
+    try {
+      const publicUploads = path.resolve(process.cwd(), "public/uploads");
+      if (!fs.existsSync(publicUploads)) fs.mkdirSync(publicUploads, { recursive: true });
+      fs.writeFileSync(path.join(publicUploads, filename), buffer);
+    } catch {}
+
+    const mediaUrl = `/api/media/${id}`;
+    const dataUrl = data.startsWith("data:") ? data : `data:${cleanContentType};base64,${base64Data}`;
+
+    res.status(201).json({
+      id,
+      url: mediaUrl,
+      filename,
+      dataUrl,
+      alt: alt || "Uploaded regulatory illustration",
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Image upload failed." });
   }
+});
+
+// Serve uploaded media by ID
+router.get("/media/:id", (req: Request, res: Response) => {
+  const cleanId = req.params.id.replace(/\.[^/.]+$/, "");
+  const cached = mediaCache.get(cleanId);
+  if (cached) {
+    res.setHeader("Content-Type", cached.contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.send(cached.buffer);
+    return;
+  }
+  // Search /tmp and public/uploads
+  try {
+    const exts = ["jpg", "png", "webp", "jpeg"];
+    for (const ext of exts) {
+      const tmpPath = path.resolve("/tmp", `${cleanId}.${ext}`);
+      if (fs.existsSync(tmpPath)) {
+        res.setHeader("Content-Type", ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        res.send(fs.readFileSync(tmpPath));
+        return;
+      }
+      const pubPath = path.resolve(process.cwd(), "public/uploads", `${cleanId}.${ext}`);
+      if (fs.existsSync(pubPath)) {
+        res.setHeader("Content-Type", ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        res.send(fs.readFileSync(pubPath));
+        return;
+      }
+    }
+  } catch {}
+  res.status(404).json({ error: "Media not found" });
+});
+
+// Serve /uploads/:filename route for backward compatibility
+router.get("/uploads/:filename", (req: Request, res: Response) => {
+  const filename = req.params.filename;
+  const cleanId = filename.replace(/\.[^/.]+$/, "");
+  const cached = mediaCache.get(cleanId);
+  if (cached) {
+    res.setHeader("Content-Type", cached.contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.send(cached.buffer);
+    return;
+  }
+  try {
+    const pubPath = path.resolve(process.cwd(), "public/uploads", filename);
+    if (fs.existsSync(pubPath)) {
+      res.sendFile(pubPath);
+      return;
+    }
+    const tmpPath = path.resolve("/tmp", filename);
+    if (fs.existsSync(tmpPath)) {
+      res.sendFile(tmpPath);
+      return;
+    }
+  } catch {}
+  res.status(404).json({ error: "File not found" });
 });
 
 // 9. Form Submission
@@ -1030,7 +1025,7 @@ router.post("/forms/submit", (req: Request, res: Response) => {
   }
 });
 
-// 10. AI Blog Generator
+// 10. AI Blog Generator (Grounded in Verified Republic of Kenya Regulations)
 router.post("/ai/generate-serikali-blog", async (req: Request, res: Response) => {
   const { topic, categoryId } = req.body || {};
   if (!topic || typeof topic !== "string" || !topic.trim()) {
@@ -1038,9 +1033,11 @@ router.post("/ai/generate-serikali-blog", async (req: Request, res: Response) =>
     return;
   }
   const cleanTopic = topic.trim();
+  const knowledge = getRegulatoryKnowledgeForTopic(cleanTopic, categoryId);
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    res.json(buildFallbackBlog(cleanTopic, categoryId));
+    res.json(synthesizeAuthoritativeBlog(cleanTopic, categoryId));
     return;
   }
 
@@ -1050,12 +1047,32 @@ router.post("/ai/generate-serikali-blog", async (req: Request, res: Response) =>
         apiKey,
         httpOptions: { headers: { "User-Agent": "aistudio-build" } },
       });
-      const prompt = "You are the Senior Editorial Director and Kenya Regulatory Counsel at SERIKALI GUIDE. Today is 2026. Generate an authentic, legally precise blog guide for: " + cleanTopic;
+
+      const prompt = `You are Senior Kenya Regulatory Legal Counsel & Editorial Director at SERIKALI GUIDE.
+Today is 2026. Generate an authoritative, legally precise regulatory dossier for the following topic:
+"${cleanTopic}"
+
+VERIFIED STATUTORY GROUND TRUTH CONTEXT FOR THIS TOPIC:
+- Governing Legislation: ${knowledge.governingLaw}
+- Responsible Regulatory Body: ${knowledge.regulatoryAgency}
+- Official Government Portal: ${knowledge.officialPortal} (must end in .go.ke)
+- Mandatory Statutory Forms: ${knowledge.statutoryForms.join(", ")}
+- Gazetted Fee Schedule: ${knowledge.gazettedFees}
+- Official Processing Timeline: ${knowledge.processingTimeline}
+- Document Prerequisites: ${knowledge.prerequisites.join("; ")}
+- Recommended Official Illustration: ${knowledge.recommendedPhoto}
+
+STRICT ANTI-HALLUCINATION & LEGAL ACCURACY RULES:
+1. DO NOT GUESS OR INVENT VAGUE WORDS. Every statement must be factual Kenyan regulatory law.
+2. Explicitly cite the governing Act of Parliament, section numbers, official forms, and exact gazetted fees in KSh or USD.
+3. Provide concrete step-by-step guidance on how Kenyan citizens and expatriates file through ${knowledge.officialPortal} via Government Paybill 222222.
+4. Output comprehensive markdown in "content" spanning 3 substantive sections: (1) Statutory Mandate & Legal Framework, (2) Step-by-Step Filing Workflow, and (3) Gazetted Fee Schedule, Timelines & Audit Checklist.`;
+
       const response = await ai.models.generateContent({
         model: "gemini-3.8-flash",
         contents: prompt,
         config: {
-          systemInstruction: "You are an authoritative Kenyan regulatory legal analyst. Output accurate JSON only.",
+          systemInstruction: "You are an authoritative Kenyan regulatory legal analyst. Output accurate JSON strictly conforming to the schema without guessing.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -1070,29 +1087,56 @@ router.post("/ai/generate-serikali-blog", async (req: Request, res: Response) =>
               readTime: { type: Type.STRING },
               author: { type: Type.STRING },
               authorRole: { type: Type.STRING },
+              image: { type: Type.STRING },
               keyTakeaways: { type: Type.ARRAY, items: { type: Type.STRING } },
               sectionHeading: { type: Type.STRING },
               sectionBody: { type: Type.STRING },
               checklist: { type: Type.ARRAY, items: { type: Type.STRING } },
               callout: { type: Type.STRING },
+              content: { type: Type.STRING },
               metaTitle: { type: Type.STRING },
               metaDescription: { type: Type.STRING },
               keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
             },
-            required: ["title", "subtitle", "categoryId", "categoryName", "subCategoryName", "excerpt", "officialPortal", "readTime", "author", "authorRole", "keyTakeaways", "sectionHeading", "sectionBody", "checklist", "callout", "metaTitle", "metaDescription", "keywords"],
+            required: [
+              "title",
+              "subtitle",
+              "categoryId",
+              "categoryName",
+              "subCategoryName",
+              "excerpt",
+              "officialPortal",
+              "readTime",
+              "author",
+              "authorRole",
+              "keyTakeaways",
+              "sectionHeading",
+              "sectionBody",
+              "checklist",
+              "callout",
+              "metaTitle",
+              "metaDescription",
+              "keywords",
+            ],
           },
         },
       });
+
       const text = response.text;
-      if (!text) throw new Error("Empty response");
-      return JSON.parse(text.trim());
+      if (!text) throw new Error("Empty response from AI");
+      const parsed = JSON.parse(text.trim());
+      // Guarantee image reflects accurate photo
+      if (!parsed.image || parsed.image.startsWith("http://example")) {
+        parsed.image = knowledge.recommendedPhoto;
+      }
+      return parsed;
     })();
 
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4500));
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 6000));
     const result = await Promise.race([aiCall, timeoutPromise]);
     res.json(result);
   } catch {
-    res.json(buildFallbackBlog(cleanTopic, categoryId));
+    res.json(synthesizeAuthoritativeBlog(cleanTopic, categoryId));
   }
 });
 
@@ -1104,9 +1148,11 @@ router.post("/ai/generate-serikali-service", async (req: Request, res: Response)
     return;
   }
   const cleanTopic = topic.trim();
+  const knowledge = getRegulatoryKnowledgeForTopic(cleanTopic);
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    res.json(buildFallbackService(cleanTopic));
+    res.json(synthesizeAuthoritativeService(cleanTopic));
     return;
   }
 
@@ -1116,12 +1162,20 @@ router.post("/ai/generate-serikali-service", async (req: Request, res: Response)
         apiKey,
         httpOptions: { headers: { "User-Agent": "aistudio-build" } },
       });
-      const prompt = "Generate service category for: " + cleanTopic;
+
+      const prompt = `Generate an official Kenyan service category structure for "${cleanTopic}".
+Context:
+- Governing Law: ${knowledge.governingLaw}
+- Agency: ${knowledge.regulatoryAgency}
+- Official Portal: ${knowledge.officialPortal}
+- Gazetted Fees: ${knowledge.gazettedFees}
+- Timeline: ${knowledge.processingTimeline}`;
+
       const response = await ai.models.generateContent({
         model: "gemini-3.8-flash",
         contents: prompt,
         config: {
-          systemInstruction: "Expert Kenyan government regulatory architect. Output JSON only.",
+          systemInstruction: "Expert Kenyan government regulatory architect. Output verified, accurate JSON only.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -1164,16 +1218,17 @@ router.post("/ai/generate-serikali-service", async (req: Request, res: Response)
           },
         },
       });
+
       const text = response.text;
       if (!text) throw new Error("Empty response");
       return JSON.parse(text.trim());
     })();
 
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4500));
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 6000));
     const result = await Promise.race([aiCall, timeoutPromise]);
     res.json(result);
   } catch {
-    res.json(buildFallbackService(cleanTopic));
+    res.json(synthesizeAuthoritativeService(cleanTopic));
   }
 });
 
