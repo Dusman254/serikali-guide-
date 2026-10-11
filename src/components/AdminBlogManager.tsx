@@ -466,6 +466,8 @@ export const AdminBlogManager: React.FC = () => {
             ? `Published new article "${title}"!`
             : `Saved new article "${title}" as draft.`
         );
+        // Switch to list view so the new blog post is immediately visible in the directory
+        setMode('list');
       }
 
       setStatus(finalStatus);

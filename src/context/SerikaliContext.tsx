@@ -1186,7 +1186,13 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const posts = await blogDbService.fetchBlogs('all');
       if (Array.isArray(posts) && posts.length > 0) {
-        setRawBlogPosts(posts);
+        setRawBlogPosts((prev) => {
+          const remoteMap = new Map(posts.map((p) => [p.id, p]));
+          const pending = prev.filter(
+            (p) => !remoteMap.has(p.id) && !recentlyDeletedRef.current.has(p.id)
+          );
+          return [...pending, ...posts];
+        });
       }
     } catch (err) {
       console.warn('Could not sync remote blogs:', err);
@@ -1300,20 +1306,28 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isTranslatingContent, setIsTranslatingContent] = useState(false);
 
   const [consultations, setConsultations] = useState<ConsultationBooking[]>(
-    () =>
-      loadJson<ConsultationBooking[]>(
-        STORAGE_KEYS.CONSULTATIONS,
-        INITIAL_CONSULTATIONS
-      )
+    () => {
+      const loaded =
+        loadJson<ConsultationBooking[]>(
+          STORAGE_KEYS.CONSULTATIONS,
+          INITIAL_CONSULTATIONS
+        ) || [];
+      return loaded.filter((c) => !c.id.startsWith('cons-10'));
+    }
   );
 
-  const [inquiries, setInquiries] = useState<ClientInquiry[]>(() =>
-    loadJson<ClientInquiry[]>(STORAGE_KEYS.INQUIRIES, INITIAL_INQUIRIES)
-  );
+  const [inquiries, setInquiries] = useState<ClientInquiry[]>(() => {
+    const loaded =
+      loadJson<ClientInquiry[]>(STORAGE_KEYS.INQUIRIES, INITIAL_INQUIRIES) ||
+      [];
+    return loaded.filter((i) => !i.id.startsWith('inq-20'));
+  });
 
-  const [donations, setDonations] = useState<BlogDonation[]>(() =>
-    loadJson<BlogDonation[]>(STORAGE_KEYS.DONATIONS, INITIAL_DONATIONS)
-  );
+  const [donations, setDonations] = useState<BlogDonation[]>(() => {
+    const loaded =
+      loadJson<BlogDonation[]>(STORAGE_KEYS.DONATIONS, INITIAL_DONATIONS) || [];
+    return loaded.filter((d) => !d.id.startsWith('don-30'));
+  });
 
   const [managedServices, setManagedServices] = useState<ManagedServiceItem[]>(() =>
     loadJson<ManagedServiceItem[]>(
@@ -1324,21 +1338,25 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const [serviceRequests, setServiceRequests] = useState<
     ServiceRequestSubmission[]
-  >(() =>
-    loadJson<ServiceRequestSubmission[]>(
-      STORAGE_KEYS.SERVICE_REQUESTS,
-      INITIAL_SERVICE_REQUESTS
-    )
-  );
+  >(() => {
+    const loaded =
+      loadJson<ServiceRequestSubmission[]>(
+        STORAGE_KEYS.SERVICE_REQUESTS,
+        INITIAL_SERVICE_REQUESTS
+      ) || [];
+    return loaded.filter((r) => !r.id.startsWith('req-demo-'));
+  });
 
   const [newsletterSubscribers, setNewsletterSubscribers] = useState<
     NewsletterSubscriber[]
-  >(() =>
-    loadJson<NewsletterSubscriber[]>(
-      STORAGE_KEYS.NEWSLETTER,
-      INITIAL_NEWSLETTER_SUBSCRIBERS
-    )
-  );
+  >(() => {
+    const loaded =
+      loadJson<NewsletterSubscriber[]>(
+        STORAGE_KEYS.NEWSLETTER,
+        INITIAL_NEWSLETTER_SUBSCRIBERS
+      ) || [];
+    return loaded.filter((s) => !s.id.startsWith('sub-00'));
+  });
 
   const [isGetStartedOpen, setIsGetStartedOpen] = useState(false);
   const [getStartedPreselectedServiceId, setGetStartedPreselectedServiceId] =

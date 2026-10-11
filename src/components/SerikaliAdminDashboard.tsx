@@ -72,6 +72,7 @@ export const SerikaliAdminDashboard: React.FC = () => {
     lockAdmin,
     addBlogPost,
     deleteBlogPost,
+    reloadBlogs,
     addServiceCategory,
     deleteServiceCategory,
     addSubCategory,
@@ -388,6 +389,7 @@ export const SerikaliAdminDashboard: React.FC = () => {
     setBlogExcerpt('');
     setBlogSectionBody('');
     showToast(`Blog post "${created.title}" published!`);
+    reloadBlogs().catch(() => {});
   };
 
   // Handle Create Main Service Category
