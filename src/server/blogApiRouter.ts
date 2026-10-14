@@ -3,7 +3,7 @@ import {
   requireAdmin,
   isValidAdminToken,
   createAdminSession,
-} from '../../api/index';
+} from '../../api/index.js';
 
 export { blogApiRouter, requireAdmin, isValidAdminToken, createAdminSession };
 export default blogApiRouter;

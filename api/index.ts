@@ -6,7 +6,8 @@ import {
   getRegulatoryKnowledgeForTopic,
   synthesizeAuthoritativeBlog,
   synthesizeAuthoritativeService,
-} from "./regulatoryKnowledge";
+  validateRegulatoryAccuracy,
+} from "./regulatoryKnowledge.js";
 
 export interface BlogPost {
   id: string;
@@ -1052,27 +1053,33 @@ router.post("/ai/generate-serikali-blog", async (req: Request, res: Response) =>
 Today is 2026. Generate an authoritative, legally precise regulatory dossier for the following topic:
 "${cleanTopic}"
 
-VERIFIED STATUTORY GROUND TRUTH CONTEXT FOR THIS TOPIC:
-- Governing Legislation: ${knowledge.governingLaw}
-- Responsible Regulatory Body: ${knowledge.regulatoryAgency}
-- Official Government Portal: ${knowledge.officialPortal} (must end in .go.ke)
+MANDATORY STATUTORY GROUND TRUTH CONTEXT (Republic of Kenya):
+- Primary Governing Act: ${knowledge.governingLaw}
+- Government Regulatory Agency: ${knowledge.regulatoryAgency}
+- Official Government Filing Portal: ${knowledge.officialPortal} (MUST be an authentic .go.ke domain)
 - Mandatory Statutory Forms: ${knowledge.statutoryForms.join(", ")}
 - Gazetted Fee Schedule: ${knowledge.gazettedFees}
-- Official Processing Timeline: ${knowledge.processingTimeline}
-- Document Prerequisites: ${knowledge.prerequisites.join("; ")}
-- Recommended Official Illustration: ${knowledge.recommendedPhoto}
+- Official Statutory Timeline: ${knowledge.processingTimeline}
+- Document Dossier Prerequisites: ${knowledge.prerequisites.join("; ")}
+- Recommended Official Visual Asset: ${knowledge.recommendedPhoto}
+- Unified Payment Portal: Official Government Paybill 222222
 
-STRICT ANTI-HALLUCINATION & LEGAL ACCURACY RULES:
-1. DO NOT GUESS OR INVENT VAGUE WORDS. Every statement must be factual Kenyan regulatory law.
-2. Explicitly cite the governing Act of Parliament, section numbers, official forms, and exact gazetted fees in KSh or USD.
-3. Provide concrete step-by-step guidance on how Kenyan citizens and expatriates file through ${knowledge.officialPortal} via Government Paybill 222222.
-4. Output comprehensive markdown in "content" spanning 3 substantive sections: (1) Statutory Mandate & Legal Framework, (2) Step-by-Step Filing Workflow, and (3) Gazetted Fee Schedule, Timelines & Audit Checklist.`;
+STRICT ANTI-HALLUCINATION & FACTUAL ACCURACY CONSTRAINTS:
+1. NEVER USE VAGUE WORDS or placeholder phrasing (e.g. "relevant authorities", "applicable fees", "necessary documents", "as per law", or "consult officials").
+2. INVENT NOTHING: Every fee figure MUST be exact numbers in KSh or USD matching the gazetted schedule (e.g., KSh 500,000 for Class D, KSh 10,650 for company incorporation, KSh 1,050 for Good Conduct).
+3. EXPLICIT CITATIONS: Explicitly cite the governing Act of Parliament, section numbers, and statutory form codes (e.g., Form 25, Form CR12, Form BOF1, Form C24).
+4. PROCEDURAL RIGOR: Detail sequential step-by-step procedures on how the applicant files through ${knowledge.officialPortal} via Government Paybill 222222 and receives official certificates.
+5. THREE-PART SECTION STRUCTURE in "content":
+   - Section 1: Statutory Mandate & Strict Eligibility Criteria (citing Act and Section)
+   - Section 2: Step-by-Step Filing Workflow & Mandatory Document Dossier
+   - Section 3: Gazetted Fee Schedule, Processing Timelines & Penal Sanctions for Non-Compliance`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.8-flash",
         contents: prompt,
         config: {
-          systemInstruction: "You are an authoritative Kenyan regulatory legal analyst. Output accurate JSON strictly conforming to the schema without guessing.",
+          systemInstruction:
+            "You are an authoritative Kenyan regulatory legal analyst. Output accurate JSON strictly conforming to the schema without guessing or generic filler.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -1125,18 +1132,21 @@ STRICT ANTI-HALLUCINATION & LEGAL ACCURACY RULES:
       const text = response.text;
       if (!text) throw new Error("Empty response from AI");
       const parsed = JSON.parse(text.trim());
-      // Guarantee image reflects accurate photo
       if (!parsed.image || parsed.image.startsWith("http://example")) {
         parsed.image = knowledge.recommendedPhoto;
       }
       return parsed;
     })();
 
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 6000));
-    const result = await Promise.race([aiCall, timeoutPromise]);
-    res.json(result);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 15000));
+    const rawResult = await Promise.race([aiCall, timeoutPromise]);
+    // Run accuracy validation step
+    const validation = validateRegulatoryAccuracy(rawResult, cleanTopic, knowledge);
+    res.json(validation.validatedData);
   } catch {
-    res.json(synthesizeAuthoritativeBlog(cleanTopic, categoryId));
+    const fallback = synthesizeAuthoritativeBlog(cleanTopic, categoryId);
+    const validation = validateRegulatoryAccuracy(fallback, cleanTopic, knowledge);
+    res.json(validation.validatedData);
   }
 });
 
@@ -1232,24 +1242,433 @@ Context:
   }
 });
 
-// 12. AI Search Assistant
+// 12. Super Intelligent AI Search Assistant: Grounded on blogs, regulatory acts & service catalog
 router.post("/ai/search-assistant", async (req: Request, res: Response) => {
-  const { query } = req.body || {};
+  const { query, contextSummary, language } = req.body || {};
   const cleanQuery = (query || "").trim();
-  res.json({
-    answer: "Official Kenyan government procedure for " + cleanQuery + " is governed by current statutory guidelines and eCitizen directives.",
-    portal: "ecitizen.go.ke",
-    timeline: "Standard Statutory Processing Window",
-    keyPoints: [
-      "Access official verified Republic of Kenya portals ending in .go.ke",
-      "Verify National ID or Passport biodata and KRA Tax Compliance status",
-      "Ensure all payments generate an official PRN receipt",
-    ],
-    followUpQuestions: [
-      "What are the mandatory documents for " + cleanQuery + "?",
-      "What is the official statutory fee structure?",
-    ],
-  });
+
+  if (!cleanQuery) {
+    res.status(400).json({ error: "Please provide a valid query." });
+    return;
+  }
+
+  const q = cleanQuery.toLowerCase();
+  const liveBlogs = loadBlogs();
+
+  interface ApiCallToAction {
+    id: string;
+    label: string;
+    description: string;
+    variant: "primary" | "secondary" | "accent";
+    actionType: "get-started" | "open-blog" | "start-service";
+    payload: Record<string, any>;
+  }
+
+  // 1. Detect Problem Intent & Regulatory Knowledge
+  let problemType = "general";
+  let diagnosisTitle = `Statutory Guidance & Action Plan for "${cleanQuery}"`;
+  let urgency = "Standard Regulatory Procedure";
+  let solutionTitle = "Official Kenyan Administrative & Regulatory Protocol";
+  let solutionOverview = `Official Republic of Kenya procedures for ${cleanQuery} are governed by gazetted regulations and official government portals. Follow these verified statutory steps and document requirements.`;
+  let portal = "accounts.ecitizen.go.ke";
+  let timeline = "Standard Statutory Processing Window";
+  let statutoryFees = "Gazetted Schedule via Government Paybill 222222";
+  let governingLaw = "Applicable Acts of Parliament & Government Gazette Directives";
+
+  let whatToDoSteps: Array<{ stepNumber: number; title: string; detail: string; isUrgent?: boolean }> = [
+    {
+      stepNumber: 1,
+      title: "Verify Official Portal & Identity Prerequisites",
+      detail: "Ensure all filings are conducted on official portals ending in .go.ke. Verify your National ID, Passport, and KRA PIN records are active.",
+      isUrgent: false,
+    },
+    {
+      stepNumber: 2,
+      title: "Compile Certified Mandatory Document Dossier",
+      detail: "Prepare required statutory forms, certified copies of civil identification, and professional certifications prior to online submission.",
+      isUrgent: false,
+    },
+    {
+      stepNumber: 3,
+      title: "Remit Gazetted Treasury Fees via Government Paybill 222222",
+      detail: "All official government digital payments generate a serialized eCitizen Payment Reference Number (PRN) receipt through Paybill 222222.",
+      isUrgent: false,
+    },
+  ];
+
+  let matchedBlogIds = [
+    "blog-ecitizen-single-sign-on-portals-guide",
+    "blog-kenya-epassport-good-conduct-civil-docs",
+    "blog-licences-permits-nca-nema-odpc-kenya",
+  ];
+
+  let callToActions: ApiCallToAction[] = [
+    {
+      id: "cta-general-service",
+      label: "Start Service with Guided Concierge",
+      description: "Direct guided service application with document verification.",
+      variant: "primary" as const,
+      actionType: "get-started" as const,
+      payload: { topic: cleanQuery },
+    },
+    {
+      id: "cta-general-blog",
+      label: "Read Regulatory Blogs & Compliance Guides",
+      description: "Access verified Kenyan government procedures.",
+      variant: "secondary" as const,
+      actionType: "open-blog" as const,
+      payload: { blogId: "blog-ecitizen-single-sign-on-portals-guide" },
+    },
+  ];
+
+  let followUpQuestions = [
+    `What are the mandatory document requirements for ${cleanQuery}?`,
+    `What is the official statutory fee and processing timeline?`,
+    `Which government agency and portal handles ${cleanQuery}?`,
+  ];
+
+  // SCENARIO A: LOST LAPTOP / COMPUTER / ELECTRONIC DEVICE
+  if (
+    q.includes("laptop") ||
+    q.includes("macbook") ||
+    q.includes("computer") ||
+    q.includes("pc") ||
+    q.includes("phone") ||
+    q.includes("device") ||
+    q.includes("gadget") ||
+    q.includes("stolen laptop") ||
+    q.includes("lost my laptop")
+  ) {
+    problemType = "lost_laptop_device";
+    diagnosisTitle = "Report of Lost or Stolen Laptop / Electronic Device in Kenya";
+    urgency = "Critical: Immediate Police OB & Credential Lockdown Required";
+    solutionTitle = "Emergency Legal & Digital Security Response for Lost Laptop";
+    solutionOverview =
+      "Reporting and resolving a lost laptop in Kenya requires urgent statutory and digital security actions: securing an official Kenya Police Occurrence Book (OB) entry and Police Abstract (GP 59), revoking saved eCitizen Single Sign-On and KRA iTax access credentials, lodging hardware identifiers with DCI Cybercrime, and notifying the Data Protection Commissioner (ODPC) within 72 hours if client or corporate data was compromised.";
+    portal = "accounts.ecitizen.go.ke / odpc.go.ke";
+    timeline = "Police OB & Abstract: Immediate (Same Day); Identity Lock: Instant 1 Hour";
+    statutoryFees = "Police Abstract: Free of Charge; Sworn Affidavit Stamp: ~KSh 500";
+    governingLaw = "National Police Service Act (Cap. 84) & Data Protection Act, 2019 (Act No. 24 of 2019)";
+
+    whatToDoSteps = [
+      {
+        stepNumber: 1,
+        title: "Obtain Kenya Police Occurrence Book (OB) Entry & Stamped Police Abstract",
+        detail:
+          "Visit the nearest Kenya Police Station or DCI reporting desk immediately. Present the device brand, model, serial number, and exact circumstances of loss. Demand a signed, rubber-stamped Kenya Police Abstract Form (GP 59). This establishes legal proof of loss, protects you from liability if the device is used in unauthorized activities, and is required for insurance claims.",
+        isUrgent: true,
+      },
+      {
+        stepNumber: 2,
+        title: "Emergency Lockdown of eCitizen Single Sign-On & KRA iTax Credentials",
+        detail:
+          "From a secure alternate device, immediately sign into accounts.ecitizen.go.ke and itax.kra.go.ke. Change your passwords, terminate active sessions, and verify that no unauthorized service filings or PIN modifications have taken place.",
+        isUrgent: true,
+      },
+      {
+        stepNumber: 3,
+        title: "Log Device Serial Number with DCI Cybercrime Unit",
+        detail:
+          "Provide the laptop serial number, MAC address, and IMEI (if equipped with a cellular SIM module) to the DCI Cybercrime tracking unit to flag the hardware against grey-market electronics resale and border clearance.",
+        isUrgent: true,
+      },
+      {
+        stepNumber: 4,
+        title: "Swear an Affidavit of Loss Before a Commissioner for Oaths",
+        detail:
+          "Execute a formal Sworn Affidavit of Loss declaring your ownership, serial number, date of loss, and stating that the machine was not pledged or sold. This document is mandatory for corporate asset write-offs, replacement claims, and insurer indemnification.",
+        isUrgent: false,
+      },
+      {
+        stepNumber: 5,
+        title: "Comply with ODPC Section 43 Data Breach Rules (If Business / Client Data Involved)",
+        detail:
+          "Under Section 43 of the Kenya Data Protection Act 2019, if the lost laptop contained unencrypted personal data of customers, employees, or clients, you are legally mandated to notify the Office of the Data Protection Commissioner (ODPC) within 72 hours of becoming aware of the incident.",
+        isUrgent: true,
+      },
+    ];
+
+    matchedBlogIds = [
+      "blog-ecitizen-single-sign-on-portals-guide",
+      "blog-licences-permits-nca-nema-odpc-kenya",
+      "blog-kenya-epassport-good-conduct-civil-docs",
+    ];
+
+    callToActions = [
+      {
+        id: "cta-lost-laptop-abstract",
+        label: "Get Police Abstract & Affidavit Assistance",
+        description: "Fast-track preparation of Sworn Affidavit and document reconstruction.",
+        variant: "primary" as const,
+        actionType: "start-service" as const,
+        payload: {
+          categoryId: "government-documents",
+          subCategoryId: "document-replacement",
+          serviceId: "passport-lost-replace",
+        },
+      },
+      {
+        id: "cta-lost-laptop-ecitizen-blog",
+        label: "Read Guide: eCitizen Identity Security & Single Sign-On",
+        description: "Step-by-step instructions on securing your government portal credentials.",
+        variant: "secondary" as const,
+        actionType: "open-blog" as const,
+        payload: { blogId: "blog-ecitizen-single-sign-on-portals-guide" },
+      },
+      {
+        id: "cta-lost-laptop-compliance",
+        label: "Consult Legal & Regulatory Compliance Desk",
+        description: "Speak with our advisors regarding ODPC reporting & asset recovery.",
+        variant: "accent" as const,
+        actionType: "get-started" as const,
+        payload: { topic: "lost-laptop-device-emergency" },
+      },
+    ];
+
+    followUpQuestions = [
+      "Did the lost laptop contain unencrypted company or client personal data?",
+      "Were your eCitizen or KRA credentials saved in the browser password manager?",
+      "Do you have the hardware serial number and purchase receipt for insurance claim?",
+    ];
+  }
+
+  // SCENARIO B: LOST PASSPORT
+  else if (
+    q.includes("lost my passport") ||
+    (q.includes("passport") &&
+      (q.includes("lost") ||
+        q.includes("stolen") ||
+        q.includes("misplaced") ||
+        q.includes("missing") ||
+        q.includes("damaged") ||
+        q.includes("replace")))
+  ) {
+    problemType = "lost_passport";
+    diagnosisTitle = "Replacement of Lost Republic of Kenya EAC Biometric e-Passport";
+    urgency = "Critical: Statutory Replacement & INTERPOL Cancellation Required";
+    solutionTitle = "Statutory Replacement Protocol for Lost Kenyan e-Passport";
+    solutionOverview =
+      "Under the Kenya Citizenship and Immigration Act (Cap. 172) and gazetted 2024 fee schedules, replacing a lost Kenyan passport requires an immediate Police Abstract, a Sworn Affidavit of Loss before a Commissioner for Oaths, filing on eCitizen (ecitizen.go.ke) under the Directorate of Immigration Services, payment of the statutory KSh 20,000 lost passport penalty fee, and biometric enrollment for cancellation on the INTERPOL Stolen & Lost Travel Documents (SLTD) database.";
+    portal = "accounts.ecitizen.go.ke";
+    timeline = "15 to 25 Working Days (Includes security vetting & INTERPOL SLTD cancellation)";
+    statutoryFees =
+      "Lost Passport Penalty: KSh 20,000 + Booklet Fee: Series A (34 Pgs) KSh 7,500 / Series B KSh 9,500 / Series C KSh 12,500";
+    governingLaw =
+      "Kenya Citizenship and Immigration Act, 2011 (Cap. 172), Section 27-31 & Kenya Gazette Notice on Immigration Fees 2024";
+
+    whatToDoSteps = [
+      {
+        stepNumber: 1,
+        title: "Report Loss to Nearest Kenya Police Station for OB & Stamped Abstract",
+        detail:
+          "Report the lost passport immediately at the nearest Police Station or DCI desk to obtain an official Occurrence Book (OB) Number and signed, stamped Kenya Police Abstract Form (GP 59) citing the lost passport number.",
+        isUrgent: true,
+      },
+      {
+        stepNumber: 2,
+        title: "Swear an Affidavit of Loss Before a Commissioner for Oaths",
+        detail:
+          "Execute a statutory affidavit stating your lost passport number, date, time, and circumstances of loss, affirming under oath that the document has not been pledged or held by creditors.",
+        isUrgent: true,
+      },
+      {
+        stepNumber: 3,
+        title: "File Replacement Application on eCitizen (DIS Portal)",
+        detail:
+          "Sign into accounts.ecitizen.go.ke, navigate to Directorate of Immigration Services, select 'Passport Services' -> 'Application for Replacement of Lost Passport' (Form 19), upload scanned documents, and select your preferred collection station.",
+        isUrgent: true,
+      },
+      {
+        stepNumber: 4,
+        title: "Remit Gazetted Replacement & Booklet Fee via Government Paybill 222222",
+        detail:
+          "Pay the gazetted replacement fee (KSh 20,000 penalty fee plus the chosen booklet fee: Series A KSh 7,500, Series B KSh 9,500, Series C KSh 12,500) via Paybill 222222 to generate your official serialized payment invoices.",
+        isUrgent: true,
+      },
+      {
+        stepNumber: 5,
+        title: "Collate Mandatory Documents & Attend Biometrics Appointment",
+        detail:
+          "Download Form 19 and 3 invoice copies. Attend your booked appointment slot at Nyayo House or your regional immigration centre with your original National ID, original Birth Certificate, 3 passport photos, and recommender ID copy. The old booklet is formally cancelled on the INTERPOL SLTD database.",
+        isUrgent: false,
+      },
+    ];
+
+    matchedBlogIds = [
+      "blog-kenya-epassport-good-conduct-civil-docs",
+      "blog-ecitizen-single-sign-on-portals-guide",
+      "blog-kenya-work-permits-2026",
+    ];
+
+    callToActions = [
+      {
+        id: "cta-lost-passport-start",
+        label: "Start Lost Passport Replacement Service",
+        description: "Direct guided application workflow with requirement verification.",
+        variant: "primary" as const,
+        actionType: "start-service" as const,
+        payload: {
+          categoryId: "government-documents",
+          subCategoryId: "passport",
+          serviceId: "passport-lost-replace",
+        },
+      },
+      {
+        id: "cta-lost-passport-guide-blog",
+        label: "Read Guide: Kenyan e-Passports, DCI Clearances & Civil Docs",
+        description: "Complete breakdown of recommender rules, appointment booking, and fees.",
+        variant: "secondary" as const,
+        actionType: "open-blog" as const,
+        payload: { blogId: "blog-kenya-epassport-good-conduct-civil-docs" },
+      },
+      {
+        id: "cta-lost-passport-concierge",
+        label: "Book Expedited Passport Replacement Concierge",
+        description: "Have our regulatory advisors review your dossier before appointment.",
+        variant: "accent" as const,
+        actionType: "get-started" as const,
+        payload: { topic: "lost-passport-replacement" },
+      },
+    ];
+
+    followUpQuestions = [
+      "Do you have a copy of the lost passport bio-data page or the exact passport number?",
+      "Are you located in Nairobi for Nyayo House processing, or at a regional station?",
+      "Do you need expedited processing for urgent overseas medical or academic travel?",
+    ];
+  }
+
+  // Populate actual matching blog data from live store
+  const matchedBlogs = liveBlogs
+    .filter((b: any) => matchedBlogIds.includes(b.id))
+    .map((b: any) => ({
+      id: b.id,
+      slug: b.slug,
+      title: b.title,
+      excerpt: b.excerpt,
+      readTime: b.readTime,
+      categoryName: b.categoryName,
+      image: b.image,
+      keyTakeaways: b.keyTakeaways,
+      url: `/blogs/${b.slug}`,
+    }));
+
+  // Build full response payload
+  const responsePayload = {
+    query: cleanQuery,
+    problemType,
+    problemIdentified: diagnosisTitle,
+    urgency,
+    solutionTitle,
+    answer: solutionOverview,
+    solutionOverview,
+    whatToDoSteps,
+    portal,
+    timeline,
+    statutoryFees,
+    governingLaw,
+    keyPoints: whatToDoSteps.map((s) => `${s.title}: ${s.detail.slice(0, 110)}...`),
+    matchedBlogs,
+    callToActions,
+    followUpQuestions,
+    sourceTitle: "Serikali Guide Knowledge Base",
+  };
+
+  // If Gemini API Key is available, use gemini-3.8-flash for dynamic enhancement
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+      });
+
+      const dynamicPrompt = `You are Senior Kenya Regulatory Legal Counsel & Civic Intelligence Officer at SERIKALI GUIDE.
+A citizen or resident has presented this specific situation or problem:
+"${cleanQuery}"
+
+Grounded context from live Serikali Guide regulatory catalog:
+${contextSummary || `Official Portals: ${portal}, Governing Law: ${governingLaw}, Fees: ${statutoryFees}`}
+
+Provide a super-intelligent, legally rigorous, practical response formatted as JSON.
+Constraints:
+1. Identify the exact problem and urgency level.
+2. Outline sequential step-by-step instructions ("whatToDoSteps") with exact statutory authorities (e.g. Kenya Police OB, DCI Cybercrime, eCitizen Form 19, ODPC Section 43, Commissioner for Oaths).
+3. Specify exact portals (.go.ke) and exact gazetted fees.
+4. Keep tone professional, empathetic, authoritative, and actionable.`;
+
+      const aiResponse = await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: dynamicPrompt,
+        config: {
+          systemInstruction:
+            "You are an authoritative Kenyan regulatory legal analyst. Return verified procedures strictly conforming to Kenyan statutory law.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              problemIdentified: { type: Type.STRING },
+              urgency: { type: Type.STRING },
+              solutionTitle: { type: Type.STRING },
+              solutionOverview: { type: Type.STRING },
+              portal: { type: Type.STRING },
+              timeline: { type: Type.STRING },
+              statutoryFees: { type: Type.STRING },
+              governingLaw: { type: Type.STRING },
+              whatToDoSteps: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    stepNumber: { type: Type.INTEGER },
+                    title: { type: Type.STRING },
+                    detail: { type: Type.STRING },
+                    isUrgent: { type: Type.BOOLEAN },
+                  },
+                  required: ["stepNumber", "title", "detail"],
+                },
+              },
+              followUpQuestions: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+            required: ["problemIdentified", "solutionTitle", "solutionOverview", "whatToDoSteps"],
+          },
+        },
+      });
+
+      if (aiResponse.text) {
+        const parsed = JSON.parse(aiResponse.text);
+        if (parsed && parsed.solutionOverview) {
+          res.json({
+            ...responsePayload,
+            problemIdentified: parsed.problemIdentified || responsePayload.problemIdentified,
+            urgency: parsed.urgency || responsePayload.urgency,
+            solutionTitle: parsed.solutionTitle || responsePayload.solutionTitle,
+            answer: parsed.solutionOverview,
+            solutionOverview: parsed.solutionOverview,
+            portal: parsed.portal || responsePayload.portal,
+            timeline: parsed.timeline || responsePayload.timeline,
+            statutoryFees: parsed.statutoryFees || responsePayload.statutoryFees,
+            governingLaw: parsed.governingLaw || responsePayload.governingLaw,
+            whatToDoSteps: Array.isArray(parsed.whatToDoSteps) && parsed.whatToDoSteps.length > 0
+              ? parsed.whatToDoSteps
+              : responsePayload.whatToDoSteps,
+            followUpQuestions: Array.isArray(parsed.followUpQuestions) && parsed.followUpQuestions.length > 0
+              ? parsed.followUpQuestions
+              : responsePayload.followUpQuestions,
+            isAiEnhanced: true,
+          });
+          return;
+        }
+      }
+    } catch {
+      // Fallback seamlessly to verified regulatory deterministic response
+    }
+  }
+
+  res.json(responsePayload);
 });
 
 const app = express();

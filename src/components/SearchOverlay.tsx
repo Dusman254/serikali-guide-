@@ -14,6 +14,10 @@ import {
   Tag,
   FileText,
   Building,
+  AlertTriangle,
+  ShieldAlert,
+  HelpCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import {
@@ -29,6 +33,11 @@ import {
   SubCategoryDetail,
   BlogPost,
 } from '../data/serikaliData';
+import {
+  synthesizeSuperIntelligence,
+  AiProblemSolution,
+  AiCallToAction,
+} from '../services/aiSearchIntelligence';
 
 // Re-export for any external callers or unit tests
 export type { IntentMatchResult };
@@ -45,7 +54,9 @@ export function mapNaturalLanguageToServices(
 }
 
 const QUICK_NL_CHIPS = [
+  'I lost my laptop',
   'I lost my passport',
+  'I lost my national ID',
   'How do I renew my passport?',
   'I need a work permit',
   'Short term consultant special pass',
@@ -161,6 +172,105 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
 
   const cleanQuery = activeQuery.trim();
   const queryTokens = useMemo(() => tokenizeInput(cleanQuery), [cleanQuery]);
+
+  // 0. Super Intelligent AI Solution grounded in live blogs & service catalog
+  const [asyncAiSolution, setAsyncAiSolution] = useState<AiProblemSolution | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
+
+  const localAiSolution = useMemo(() => {
+    if (!cleanQuery) return null;
+    return synthesizeSuperIntelligence(cleanQuery, blogPosts, serviceCategories);
+  }, [cleanQuery, blogPosts, serviceCategories]);
+
+  const activeAiSolution =
+    asyncAiSolution && asyncAiSolution.query.toLowerCase() === cleanQuery.toLowerCase()
+      ? asyncAiSolution
+      : localAiSolution;
+
+  // Asynchronously query /api/ai/search-assistant in background with debounce for Gemini enhancements
+  useEffect(() => {
+    if (!cleanQuery || cleanQuery.length < 3) {
+      setAsyncAiSolution(null);
+      setIsAiLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+    const timer = setTimeout(async () => {
+      setIsAiLoading(true);
+      try {
+        const res = await fetch('/api/ai/search-assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: cleanQuery }),
+        });
+        if (res.ok && !isCancelled) {
+          const data = await res.json();
+          if (data && (data.solutionOverview || data.answer)) {
+            setAsyncAiSolution((prev) => {
+              const base = localAiSolution;
+              if (!base) return null;
+              return {
+                ...base,
+                diagnosisTitle: data.problemIdentified || base.diagnosisTitle,
+                summaryOverview: data.solutionOverview || data.answer || base.summaryOverview,
+                immediateActionSteps:
+                  Array.isArray(data.whatToDoSteps) && data.whatToDoSteps.length > 0
+                    ? data.whatToDoSteps.map((s: any) => ({
+                        stepNumber: s.stepNumber,
+                        title: s.title,
+                        detail: s.detail,
+                        isUrgent: s.isUrgent,
+                      }))
+                    : base.immediateActionSteps,
+                followUpQuestions:
+                  Array.isArray(data.followUpQuestions) && data.followUpQuestions.length > 0
+                    ? data.followUpQuestions
+                    : base.followUpQuestions,
+                isAiEnhanced: true,
+              };
+            });
+          }
+        }
+      } catch {
+        // Fallback to local instant synthesis seamlessly
+      } finally {
+        if (!isCancelled) setIsAiLoading(false);
+      }
+    }, 280);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [cleanQuery, localAiSolution]);
+
+  // Handle direct Call-to-Action execution
+  const handleExecuteCta = (cta: AiCallToAction) => {
+    handleClose();
+    if (cta.actionType === 'start-service') {
+      const targetServiceId = cta.payload.serviceId || 'passport-lost-replace';
+      const svc = serviceRegistry.find(
+        (s) => s.id === targetServiceId || s.serviceId === targetServiceId
+      );
+      if (svc) {
+        handleStartService(svc);
+      } else {
+        openGetStarted(targetServiceId);
+      }
+    } else if (cta.actionType === 'open-blog') {
+      const blogId = cta.payload.blogId;
+      if (blogId) {
+        navigate({ page: 'blog-detail', blogId });
+      } else {
+        navigate({ page: 'blogs', categoryId: 'all' });
+      }
+    } else if (cta.actionType === 'get-started') {
+      openGetStarted(cta.payload.topic);
+    } else if (cta.actionType === 'consultation') {
+      navigate({ page: 'contact' });
+    }
+  };
 
   // 1. Natural language mapping function using SerikaliContext service registry and category relevance
   const matchResult = useMemo<IntentMatchResult>(() => {
@@ -432,11 +542,299 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
 
         {/* Search Results Area */}
         <div className="py-6 sm:py-8 flex-1">
-          {cleanQuery && bestMatch ? (
+          {cleanQuery ? (
             <div className="space-y-8">
               {/* ===============================================================
-                  1. BEST MATCH SERVICE CARD (Displayed First as Requested)
+                  SUPER INTELLIGENT AI SOLUTION (Grounded on Blogs & Service Catalog)
                  =============================================================== */}
+              {activeAiSolution && (
+                <div className="bg-[#F4F3EF] border-2 border-[#141413] shadow-[0_12px_36px_rgba(20,20,19,0.08)] relative overflow-hidden transition-all duration-300">
+                  {/* Top Rainbow/Accent Stripe */}
+                  <div className="h-1.5 w-full bg-gradient-to-r from-[#D94E34] via-[#141413] to-[#D94E34]" />
+
+                  <div className="p-5 sm:p-7 space-y-6">
+                    {/* Header Row: Diagnostic Badge & Urgency */}
+                    <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-[#141413]/12">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#141413] text-[#F4F3EF] text-[10px] font-mono-num uppercase tracking-widest font-semibold">
+                          <Sparkles className="w-3.5 h-3.5 text-[#D94E34] fill-current" />
+                          SUPER INTELLIGENCE · DIRECT PROBLEM SOLVER
+                        </span>
+                        {isAiLoading && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono-num text-[#D94E34] animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#D94E34]" />
+                            Grounded Synthesis...
+                          </span>
+                        )}
+                        {activeAiSolution.isAiEnhanced && (
+                          <span className="text-[10px] font-mono-num uppercase tracking-wider text-[#1F6F43] bg-[#1F6F43]/10 px-2 py-0.5 border border-[#1F6F43]/20 font-medium">
+                            Gemini 3.8 Flash Verified
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[10px] font-mono-num uppercase tracking-wider font-bold px-2.5 py-1 ${
+                            activeAiSolution.urgencyBadge.level === 'critical'
+                              ? 'bg-[#D94E34] text-white shadow-xs'
+                              : activeAiSolution.urgencyBadge.level === 'high'
+                              ? 'bg-[#B45309] text-white'
+                              : 'bg-[#1F6F43] text-white'
+                          }`}
+                        >
+                          {activeAiSolution.urgencyBadge.text}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Problem Diagnosis Title & Overview */}
+                    <div>
+                      <h2 className="font-editorial text-2xl sm:text-3xl lg:text-4xl text-[#141413] font-medium tracking-tight">
+                        {activeAiSolution.diagnosisTitle}
+                      </h2>
+                      <p className="text-xs sm:text-sm text-[#4E4D48] mt-2 leading-relaxed max-w-4xl">
+                        {activeAiSolution.summaryOverview}
+                      </p>
+                    </div>
+
+                    {/* Official Kenyan Statutory Framework Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 bg-[#EAE9E4]/60 border border-[#141413]/12 text-xs font-mono-num">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] uppercase text-[#6E6D68] block">
+                          Governing Law
+                        </span>
+                        <span className="text-[#141413] font-medium leading-tight block">
+                          {activeAiSolution.governingFramework.governingLaw}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] uppercase text-[#6E6D68] block">
+                          Regulatory Authority
+                        </span>
+                        <span className="text-[#141413] font-medium leading-tight block">
+                          {activeAiSolution.governingFramework.regulatoryAgency}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] uppercase text-[#6E6D68] block">
+                          Official Portal
+                        </span>
+                        <span className="text-[#141413] font-medium truncate block">
+                          {activeAiSolution.governingFramework.officialPortal}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] uppercase text-[#6E6D68] block">
+                          Statutory Fees
+                        </span>
+                        <span className="text-[#141413] font-medium leading-tight block">
+                          {activeAiSolution.governingFramework.statutoryFees}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* =========================================================
+                        WHAT TO DO IMMEDIATELY (Step-by-Step Procedure)
+                       ========================================================= */}
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center justify-between border-b border-[#141413]/10 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#D94E34]" />
+                          <h4 className="text-xs font-mono-num uppercase tracking-[0.2em] text-[#141413] font-bold">
+                            WHAT TO DO (Step-by-Step Action Plan)
+                          </h4>
+                        </div>
+                        <span className="text-[11px] font-mono-num text-[#6E6D68]">
+                          {activeAiSolution.immediateActionSteps.length} Sequential Steps
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3">
+                        {activeAiSolution.immediateActionSteps.map((step) => (
+                          <div
+                            key={step.stepNumber}
+                            className={`p-4 bg-white/70 border transition-colors ${
+                              step.isUrgent
+                                ? 'border-[#D94E34]/40 hover:border-[#D94E34]'
+                                : 'border-[#141413]/12 hover:border-[#141413]/40'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3.5">
+                              <span
+                                className={`w-7 h-7 rounded-none shrink-0 flex items-center justify-center text-xs font-mono-num font-bold ${
+                                  step.isUrgent
+                                    ? 'bg-[#D94E34] text-[#F4F3EF]'
+                                    : 'bg-[#141413] text-[#F4F3EF]'
+                                }`}
+                              >
+                                0{step.stepNumber}
+                              </span>
+
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h5 className="text-sm font-semibold text-[#141413] leading-snug">
+                                    {step.title}
+                                  </h5>
+                                  {step.isUrgent && (
+                                    <span className="text-[9px] font-mono-num uppercase tracking-wider px-1.5 py-0.5 bg-[#D94E34]/15 text-[#D94E34] font-bold border border-[#D94E34]/30">
+                                      IMMEDIATE
+                                    </span>
+                                  )}
+                                  {step.formCode && (
+                                    <span className="text-[9px] font-mono-num px-1.5 py-0.5 bg-[#EAE9E4] text-[#4E4D48] border border-[#141413]/10">
+                                      {step.formCode}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-[#52514D] leading-relaxed">
+                                  {step.detail}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* =========================================================
+                        GROUNDED SOURCES: READ DIRECTLY FROM SERIKALI BLOGS & SERVICES
+                       ========================================================= */}
+                    {activeAiSolution.groundedBlogs.length > 0 && (
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center justify-between border-b border-[#141413]/10 pb-2">
+                          <div className="flex items-center gap-2">
+                            <BookOpen className="w-3.5 h-3.5 text-[#D94E34]" />
+                            <h4 className="text-xs font-mono-num uppercase tracking-[0.2em] text-[#141413] font-bold">
+                              READ DIRECTLY FROM OUR BLOGS ({activeAiSolution.groundedBlogs.length})
+                            </h4>
+                          </div>
+                          <span className="text-[10px] font-mono-num text-[#6E6D68]">
+                            Verified Regulatory Dossiers
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {activeAiSolution.groundedBlogs.map((b) => (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => {
+                                handleClose();
+                                navigate({ page: 'blog-detail', blogId: b.id });
+                              }}
+                              className="text-left p-4 bg-white/80 border border-[#141413]/14 hover:border-[#141413] hover:shadow-xs transition-all flex flex-col justify-between group cursor-pointer"
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-[10px] font-mono-num text-[#6E6D68]">
+                                  <span className="uppercase text-[#D94E34] font-medium">
+                                    {b.categoryName}
+                                  </span>
+                                  <span>{b.readTime}</span>
+                                </div>
+                                <h5 className="text-xs sm:text-sm font-semibold text-[#141413] leading-snug group-hover:text-[#D94E34] transition-colors line-clamp-2">
+                                  {b.title}
+                                </h5>
+                                <p className="text-[11px] text-[#5E5D59] line-clamp-2 leading-relaxed">
+                                  {b.excerpt}
+                                </p>
+                              </div>
+
+                              <div className="mt-3 pt-2 border-t border-[#141413]/8 flex items-center justify-between text-[11px] font-mono-num text-[#141413] font-medium">
+                                <span>Read Full Guide</span>
+                                <ArrowRight className="w-3.5 h-3.5 text-[#D94E34] group-hover:translate-x-0.5 transition-transform" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* =========================================================
+                        CALL TO ACTION (CTAs) - HIGH CONVERTING ACTIONS
+                       ========================================================= */}
+                    <div className="pt-2 border-t border-[#141413]/12">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-[10px] font-mono-num uppercase tracking-[0.2em] text-[#6E6D68] font-semibold">
+                          RECOMMENDED NEXT ACTION:
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        {activeAiSolution.callToActions.map((cta) => {
+                          if (cta.variant === 'primary') {
+                            return (
+                              <button
+                                key={cta.id}
+                                type="button"
+                                onClick={() => handleExecuteCta(cta)}
+                                className="px-6 py-3.5 bg-[#D94E34] hover:bg-[#BF3E26] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider font-semibold flex items-center gap-2.5 cursor-pointer shadow-xs transition-all active:scale-[0.99]"
+                              >
+                                <FileCheck2 className="w-4 h-4" />
+                                <span>{cta.label}</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            );
+                          }
+                          if (cta.variant === 'secondary') {
+                            return (
+                              <button
+                                key={cta.id}
+                                type="button"
+                                onClick={() => handleExecuteCta(cta)}
+                                className="px-5 py-3.5 bg-[#141413] hover:bg-[#252523] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider font-medium flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
+                              >
+                                <BookOpen className="w-3.5 h-3.5 text-[#D94E34]" />
+                                <span>{cta.label}</span>
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              key={cta.id}
+                              type="button"
+                              onClick={() => handleExecuteCta(cta)}
+                              className="px-4 py-3.5 border border-[#141413]/30 hover:border-[#141413] hover:bg-[#EAE9E4] text-[#141413] text-xs font-mono-num uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-colors"
+                            >
+                              <span>{cta.label}</span>
+                              <ArrowUpRight className="w-3.5 h-3.5 text-[#6E6D68]" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Follow-up Inquiry Chips */}
+                    {activeAiSolution.followUpQuestions && activeAiSolution.followUpQuestions.length > 0 && (
+                      <div className="pt-2 border-t border-[#141413]/8">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-mono-num uppercase text-[#6E6D68] mr-1">
+                            Follow-up questions:
+                          </span>
+                          {activeAiSolution.followUpQuestions.map((qText, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => {
+                                handleQueryChange(qText);
+                                inputRef.current?.focus();
+                              }}
+                              className="px-2.5 py-1 bg-white hover:bg-[#141413] text-[#4E4D48] hover:text-[#F4F3EF] border border-[#141413]/12 text-[11px] font-mono-num transition-all cursor-pointer text-left"
+                            >
+                              &ldquo;{qText}&rdquo; →
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ===============================================================
+                  1. BEST MATCH SERVICE CARD (Displayed in catalog format)
+                 =============================================================== */}
+              {bestMatch && (
               <div className="bg-[#EAE9E4]/50 border-2 border-[#141413] p-5 sm:p-7 shadow-[0_8px_30px_rgba(20,20,19,0.06)] relative overflow-hidden">
                 {/* Accent Header Stripe */}
                 <div className="absolute top-0 left-0 right-0 h-1 bg-[#D94E34]" />
@@ -560,6 +958,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
                   </button>
                 </div>
               </div>
+              )}
 
               {/* ===============================================================
                   2. RELATED SERVICE CATEGORIES (Follows Best Match Card as requested)
@@ -802,37 +1201,6 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
                   </div>
                 </div>
               )}
-            </div>
-          ) : cleanQuery ? (
-            /* No direct results state */
-            <div className="py-12 px-6 text-center border border-[#141413]/15 bg-[#EAE9E4]/40 max-w-2xl mx-auto space-y-4">
-              <div className="w-12 h-12 rounded-full bg-[#141413]/5 flex items-center justify-center mx-auto text-[#6E6D68]">
-                <Search className="w-6 h-6 stroke-[1.5]" />
-              </div>
-              <h4 className="font-editorial text-2xl text-[#141413]">
-                No exact match found for &ldquo;{cleanQuery}&rdquo;
-              </h4>
-              <p className="text-xs sm:text-sm text-[#5E5D59] leading-relaxed">
-                Try describing what you need in plain English — for example:
-                &ldquo;I lost my passport&rdquo;, &ldquo;Class D work permit&rdquo;, or &ldquo;Register a company&rdquo;.
-              </p>
-              <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleResetSearch}
-                  className="px-4 py-2 bg-[#141413] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider cursor-pointer"
-                >
-                  Clear Search
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOpenGetStarted()}
-                  className="px-4 py-2 bg-[#D94E34] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span>Start Service Application</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
             </div>
           ) : (
             /* Empty state (No query typed yet): Welcome guide & Popular Pathways */

@@ -353,7 +353,7 @@ export const AdminBlogManager: React.FC = () => {
 
     try {
       const res = await blogDbService.uploadImage(file);
-      const chosenUrl = res.url || res.dataUrl;
+      const chosenUrl = res.dataUrl || res.url;
       if (chosenUrl) {
         setFeaturedImage(chosenUrl);
         if (!imageAlt) {

@@ -247,10 +247,42 @@ export function mapNaturalLanguageToServices(
     return undefined;
   };
 
-  // RULE A: Lost Passport / Replacement -> Passport Replacement
+  const hasLaptopOrDevice =
+    clean.includes('laptop') ||
+    clean.includes('macbook') ||
+    clean.includes('computer') ||
+    clean.includes('pc') ||
+    clean.includes('phone') ||
+    clean.includes('device') ||
+    clean.includes('gadget');
+
+  // RULE A1: Lost Laptop / Computing Device / Stolen Electronic Equipment
+  if (hasLaptopOrDevice) {
+    const best =
+      findServiceById('document-replacement') ||
+      findServiceById('passport-lost-replace') ||
+      registry[0] ||
+      null;
+    const related = [
+      findServiceById('passport-lost-replace'),
+      findServiceById('tax-compliance'),
+    ].filter(Boolean) as RegisteredService[];
+
+    return {
+      bestMatch: best,
+      relatedSuggestions: related,
+      relatedCategories: resolveRelatedCategories('government-documents'),
+      confidence: 'high',
+      explanation:
+        'You have reported a lost or stolen laptop/electronic device. An official Kenya Police Abstract (GP 59), Sworn Affidavit of Loss, and emergency credential lockdown across eCitizen & KRA are required under Kenyan statutory regulations.',
+      identifiedKeywords: [...identifiedKeywords, 'lost-laptop/device', 'police-abstract'],
+      primaryIntent: 'lost_laptop_device',
+    };
+  }
+
+  // RULE A2: Lost Passport / Replacement -> Passport Replacement
   if (
     (hasLost && hasPassport) ||
-    hasLost ||
     (hasPassport && (clean.includes('replace') || clean.includes('replacement')))
   ) {
     const best = findServiceById('passport-lost-replace') || registry[0] || null;
@@ -265,9 +297,34 @@ export function mapNaturalLanguageToServices(
       relatedSuggestions: related,
       relatedCategories: resolveRelatedCategories(best?.categoryId || 'government-documents'),
       confidence: 'high',
-      explanation: "Because you've reported a lost passport, this service may be relevant.",
+      explanation:
+        "Because you've reported a lost or damaged passport, statutory replacement under the Kenya Citizenship and Immigration Act via eCitizen applies.",
       identifiedKeywords,
       primaryIntent: 'replace_lost_passport',
+    };
+  }
+
+  // RULE A3: General Lost Documents / Property
+  if (hasLost) {
+    const best =
+      findServiceById('document-replacement') ||
+      findServiceById('passport-lost-replace') ||
+      registry[0] ||
+      null;
+    const related = [
+      findServiceById('passport-lost-replace'),
+      findServiceById('passport-renewal'),
+    ].filter(Boolean) as RegisteredService[];
+
+    return {
+      bestMatch: best,
+      relatedSuggestions: related,
+      relatedCategories: resolveRelatedCategories('government-documents'),
+      confidence: 'high',
+      explanation:
+        'For lost documents or property in Kenya, securing a verified Kenya Police Abstract and Sworn Affidavit of Loss is the mandatory first statutory step.',
+      identifiedKeywords,
+      primaryIntent: 'lost_document_replacement',
     };
   }
 

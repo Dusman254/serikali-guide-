@@ -168,6 +168,53 @@ export const DETAILED_SERVICE_RESULTS: Record<string, PersonalizedServiceResult>
     guideUrl: { page: 'service-detail', serviceId: 'government-documents', subCategoryId: 'passport' },
   },
 
+  'document-replacement': {
+    serviceId: 'document-replacement',
+    subCategoryId: 'document-replacement',
+    categoryId: 'government-documents',
+    serviceName: 'Document & Property Loss / Police Abstract Assistance',
+    categoryName: 'Government Documents & Civic Protection',
+    summary: 'Statutory reconstruction and formal reporting for lost personal property, laptops, computing hardware, national IDs, and official documents via Kenya Police Abstracts and Sworn Affidavits of Loss.',
+    whyThisService: 'Recommended because you have experienced the loss or theft of personal property, a laptop/device, or official certificates and require official documentation.',
+    officialPortal: 'accounts.ecitizen.go.ke / Kenya Police Service',
+    estimatedTimeline: 'Police OB & Abstract: Same Day; Sworn Affidavit: 24 Hours',
+    statutoryFeeNote: 'Police Abstract: Free of Charge · Sworn Affidavit: ~KSh 500',
+    requirements: [
+      {
+        id: 'req-ob-abstract',
+        label: 'Kenya Police Occurrence Book (OB) Entry & Police Abstract',
+        isMandatory: true,
+        whyNeeded: 'Official record establishing date, station, serial number, and circumstances of loss or theft.',
+        whatCounts: 'Police abstract signed and stamped by the Officer Commanding Station (OCS).',
+        commonMistakes: 'Abstract missing the official station rubber stamp or OB serial number.',
+      },
+      {
+        id: 'req-loss-affidavit-prop',
+        label: 'Sworn Affidavit of Loss (Commissioner for Oaths)',
+        isMandatory: true,
+        whyNeeded: 'Statutory declaration of ownership and non-encumbrance required by insurers and authorities.',
+        whatCounts: 'Stamped and signed legal affidavit before a Commissioner for Oaths or Magistrate.',
+        commonMistakes: 'Undated or uncommissioned affidavit copies.',
+      },
+      {
+        id: 'req-hardware-proof',
+        label: 'Device / Document Identification Particulars',
+        isMandatory: true,
+        whyNeeded: 'Serial number, MAC address, invoice, or copy of previous document for tracking.',
+        whatCounts: 'Purchase receipt, warranty card, asset tag, or clear photograph of serial plate.',
+        commonMistakes: 'Not having the exact hardware serial number for police tracking.',
+      },
+    ],
+    nextSteps: [
+      { number: 1, title: 'Police Station OB Entry', description: 'Report to nearest station to record OB number and obtain stamped Police Abstract (GP 59).' },
+      { number: 2, title: 'Emergency Identity Lockdown', description: 'Revoke active sessions and reset passwords for eCitizen, KRA iTax, and corporate portals.' },
+      { number: 3, title: 'Commission Sworn Affidavit', description: 'Swear formal Affidavit of Loss before a licensed Commissioner for Oaths.' },
+      { number: 4, title: 'DCI Cybercrime & Insurance Filing', description: 'Submit serial number to DCI tracking and file insurance reimbursement claims.' },
+      { number: 5, title: 'Document & Credential Replacement', description: 'Submit replacement request on eCitizen for any affected civil documents.' },
+    ],
+    guideUrl: { page: 'service-detail', serviceId: 'government-documents', subCategoryId: 'document-replacement' },
+  },
+
   'work-permit-class-d': {
     serviceId: 'work-permits',
     subCategoryId: 'work-permits',
@@ -706,6 +753,52 @@ export function matchServiceByNaturalLanguage(query: string): {
 } {
   const clean = query.trim().toLowerCase();
 
+  const isLaptopOrDevice =
+    clean.includes('laptop') ||
+    clean.includes('macbook') ||
+    clean.includes('computer') ||
+    clean.includes('pc') ||
+    clean.includes('phone') ||
+    clean.includes('device') ||
+    clean.includes('gadget');
+
+  const isPassport = clean.includes('passport') || clean.includes('booklet');
+
+  if (isLaptopOrDevice) {
+    return {
+      bestMatch: DETAILED_SERVICE_RESULTS['document-replacement'],
+      confidence: 'high',
+      explanation:
+        'You have reported a lost or stolen laptop/electronic device. An official Kenya Police Abstract (GP 59), a Sworn Affidavit of Loss, and emergency credential lockdown across eCitizen & KRA are required under Kenyan statutory regulations.',
+      otherPossibilities: [
+        DETAILED_SERVICE_RESULTS['passport-lost-replace'],
+        DETAILED_SERVICE_RESULTS['tax-compliance'],
+      ],
+    };
+  }
+
+  if (
+    isPassport &&
+    (clean.includes('lost') ||
+      clean.includes('stolen') ||
+      clean.includes('misplaced') ||
+      clean.includes('replace') ||
+      clean.includes('abstract') ||
+      clean.includes('damaged') ||
+      clean.includes('mutilated'))
+  ) {
+    return {
+      bestMatch: DETAILED_SERVICE_RESULTS['passport-lost-replace'],
+      confidence: 'high',
+      explanation:
+        "Because you've reported a lost or damaged passport, statutory replacement under the Kenya Citizenship and Immigration Act via eCitizen applies.",
+      otherPossibilities: [
+        DETAILED_SERVICE_RESULTS['passport-renewal'],
+        DETAILED_SERVICE_RESULTS['passport-new'],
+      ],
+    };
+  }
+
   if (
     clean.includes('lost') ||
     clean.includes('stolen') ||
@@ -713,12 +806,13 @@ export function matchServiceByNaturalLanguage(query: string): {
     clean.includes('abstract')
   ) {
     return {
-      bestMatch: DETAILED_SERVICE_RESULTS['passport-lost-replace'],
+      bestMatch: DETAILED_SERVICE_RESULTS['document-replacement'],
       confidence: 'high',
-      explanation: "Because you've reported a lost passport, this service may be relevant.",
+      explanation:
+        'For lost documents or property in Kenya, securing a verified Kenya Police Abstract and Sworn Affidavit of Loss is the mandatory first statutory step.',
       otherPossibilities: [
-        DETAILED_SERVICE_RESULTS['passport-renewal'],
-        DETAILED_SERVICE_RESULTS['passport-new'],
+        DETAILED_SERVICE_RESULTS['passport-lost-replace'],
+        DETAILED_SERVICE_RESULTS['tax-compliance'],
       ],
     };
   }

@@ -365,6 +365,148 @@ export const KENYA_REGULATORY_KNOWLEDGE_BASE: RegulatoryTopicKnowledge[] = [
     warningNotice: "Never transact on land outside the verified Ardhisasa digital portal. Insist on a digital search and physical boundary verification before remitting purchase deposits.",
     recommendedPhoto: "/src/assets/images/serikali_land_documents_1791740090187.jpg",
   },
+  {
+    topicKey: "lost laptop device police abstract odpc",
+    category: "government-documents",
+    categoryName: "Government Documents",
+    subCategoryName: "Document replacement",
+    officialPortal: "accounts.ecitizen.go.ke / odpc.go.ke",
+    governingLaw: "National Police Service Act (Cap. 84), Kenya Information and Communications Act (KICA Cap. 411A), & Data Protection Act, 2019 (Act No. 24 of 2019)",
+    regulatoryAgency: "Kenya Police Service (DCI Cybercrime Unit) & Office of the Data Protection Commissioner (ODPC)",
+    statutoryForms: ["Kenya Police Abstract for Lost Property (GP 59)", "Sworn Affidavit of Loss", "ODPC Data Breach Notification Form (under Section 43)"],
+    gazettedFees: "Police Abstract Recording: KSh Nil (Statutory report is free; stamp duty or court fee may apply for sworn affidavit ~ KSh 500); ODPC Breach Notification: Nil",
+    processingTimeline: "Police OB & Abstract: Immediate (Same Day); Device Tracking / Digital Lock: Immediate 24 Hours",
+    prerequisites: [
+      "Physical attendance at nearest Kenya Police Station or DCI reporting desk",
+      "Laptop make, exact model, serial number, and MAC address",
+      "Details of location, date, and exact circumstances of loss or theft",
+      "List of government portal credentials, company email, and banking apps previously stored on device",
+      "If corporate or customer personal data was stored: ODPC Section 43 data breach assessment",
+    ],
+    proceduralSteps: [
+      {
+        title: "Step 1: File Immediate Report at Kenya Police Station for OB & Abstract",
+        detail: "Report to the nearest Police Station or DCI desk immediately. Provide device serial number, model, and circumstances. Obtain an official Occurrence Book (OB) Number and a signed, rubber-stamped Kenya Police Abstract Form (GP 59). This establishes legal proof of loss and indemnifies you against unauthorized misuse.",
+      },
+      {
+        title: "Step 2: Digital Identity & Government SSO Credential Lockdown",
+        detail: "Immediately revoke active sessions and reset passwords for eCitizen Single Sign-On (accounts.ecitizen.go.ke), KRA iTax, banking portals, and corporate Google Workspace/Microsoft 365 accounts previously authenticated on the laptop.",
+      },
+      {
+        title: "Step 3: Log Serial Number with DCI Cybercrime Unit",
+        detail: "Submit laptop serial number and hardware identifiers to the National Police Service / DCI Cybercrime tracking unit to flag the device against grey-market electronics resale and border clearance.",
+      },
+      {
+        title: "Step 4: Swear an Affidavit of Loss Before Commissioner for Oaths",
+        detail: "Execute a formal Sworn Affidavit of Loss before a Commissioner for Oaths declaring your ownership, serial number, and lack of third-party pledging. Required by insurance companies and corporate asset administrators.",
+      },
+      {
+        title: "Step 5: Data Protection Act (ODPC) Notification (If Business/Client Data Involved)",
+        detail: "Under Section 43 of the Kenya Data Protection Act 2019, if the laptop contained personal data of third parties, notify the Office of the Data Protection Commissioner (ODPC) within 72 hours of becoming aware of the breach.",
+      },
+    ],
+    takeaways: [
+      "Always obtain a stamped Police Abstract (GP 59) with an OB number immediately; it is required for insurance, workplace indemnification, and replacement.",
+      "Immediately reset passwords and terminate all active sessions on eCitizen, KRA iTax, and corporate portals.",
+      "If client or employee personal data was stored without full-disk encryption, Section 43 of the Data Protection Act requires notification to the ODPC within 72 hours.",
+    ],
+    warningNotice: "Failing to report a lost computing device promptly exposes the owner to secondary liability if the hardware or saved credentials are used in unauthorized cyber activities.",
+    recommendedPhoto: "/src/assets/images/serikali_land_documents_1791740090187.jpg",
+  },
+  {
+    topicKey: "lost passport replacement ecitizen dis",
+    category: "immigration-visas",
+    categoryName: "Immigration & Visas",
+    subCategoryName: "Passport replacement",
+    officialPortal: "accounts.ecitizen.go.ke",
+    governingLaw: "Kenya Citizenship and Immigration Act, 2011 (Cap. 172), Section 27-31 & Kenya Gazette Notice on Immigration Fees 2024",
+    regulatoryAgency: "Directorate of Immigration Services (Nyayo House, Nairobi & Regional Stations)",
+    statutoryForms: ["Form 19 (Passport Application)", "Sworn Affidavit of Loss", "Kenya Police Abstract (GP 59)", "Section 13 Recommender Declaration"],
+    gazettedFees: "Statutory Lost Passport Penalty: KSh 20,000 + Booklet Fee: Series A (34 Pgs) KSh 7,500 / Series B (50 Pgs) KSh 9,500 / Series C (66 Pgs) KSh 12,500",
+    processingTimeline: "15 to 25 Working Days (Includes security vetting and cancellation on the INTERPOL SLTD database)",
+    prerequisites: [
+      "Original Kenya Police Abstract stamped by Officer Commanding Station (OCS) citing the lost passport number and OB entry",
+      "Sworn Affidavit of Loss executed before a Commissioner for Oaths or Magistrate",
+      "Original National ID Card and copy (for adult citizens)",
+      "Original Birth Certificate and copy",
+      "Copy of previous passport bio-data page (if available) or verified passport number",
+      "Three (3) recent ICAO-standard color passport photos",
+      "Recommender National ID copy and signed Section 13 declaration on Form 19",
+    ],
+    proceduralSteps: [
+      {
+        title: "Step 1: Secure Police Abstract and Sworn Affidavit of Loss",
+        detail: "Report the lost passport at the nearest Police Station to obtain a stamped Police Abstract with an OB number. Swear an Affidavit of Loss before a Commissioner for Oaths detailing the circumstances.",
+      },
+      {
+        title: "Step 2: Electronic Filing via eCitizen Directorate of Immigration Services",
+        detail: "Log in to accounts.ecitizen.go.ke, navigate to Directorate of Immigration Services, select 'Passport Services' -> 'Application for Replacement of Lost Passport', fill Form 19, and upload scanned documents.",
+      },
+      {
+        title: "Step 3: Remit Gazetted Replacement & Booklet Fee via Government Paybill 222222",
+        detail: "Pay the gazetted replacement fee (KSh 20,000 penalty fee plus the selected booklet series fee) generating an official eCitizen PRN receipt.",
+      },
+      {
+        title: "Step 4: Book and Attend Biometric Verification Appointment",
+        detail: "Download the generated Form 19 application and three copies of the invoice receipt. Book an appointment slot at Nyayo House or your regional passport centre for biometric enrollment and physical dossier submission.",
+      },
+      {
+        title: "Step 5: INTERPOL Database Cancellation & New Booklet Issuance",
+        detail: "The Directorate cancels the previous passport number on the INTERPOL Stolen & Lost Travel Documents (SLTD) registry to prevent fraudulent international travel, completes security vetting, and issues the replacement e-Passport.",
+      },
+    ],
+    takeaways: [
+      "Statutory replacement of a lost Kenyan passport incurs a mandatory gazetted penalty fee of KSh 20,000 in addition to the standard booklet fee.",
+      "Both a stamped Police Abstract and a Sworn Affidavit of Loss are legally mandatory; eCitizen applications without them will be rejected.",
+      "The lost passport is automatically cancelled on the INTERPOL SLTD database upon replacement approval.",
+    ],
+    warningNotice: "Never attempt to use a previously reported lost passport even if recovered; using a cancelled travel document at border control leads to immediate detention and confiscation.",
+    recommendedPhoto: "/src/assets/images/serikali_immigration_visas_1790882120216.jpg",
+  },
+  {
+    topicKey: "lost national id duplicate maisha namba",
+    category: "government-documents",
+    categoryName: "Government Documents",
+    subCategoryName: "Identity card",
+    officialPortal: "accounts.ecitizen.go.ke",
+    governingLaw: "Registration of Persons Act (Cap. 107, Laws of Kenya)",
+    regulatoryAgency: "National Registration Bureau (NRB) & Directorate of Immigration and Citizen Services",
+    statutoryForms: ["Form 7 (Application for Duplicate ID)", "Police Abstract for Lost ID", "Sworn Affidavit of Loss"],
+    gazettedFees: "Duplicate / Replacement National ID: KSh 1,000",
+    processingTimeline: "10 to 20 Working Days (Temporary waiting slip Form 7 issued immediately upon biometric capture)",
+    prerequisites: [
+      "Original Kenya Police Abstract citing ID loss and OB number",
+      "Copy of previous National ID or exact National ID number",
+      "Original Birth Certificate or copy",
+      "Two passport-sized photographs",
+      "eCitizen payment receipt for KSh 1,000",
+    ],
+    proceduralSteps: [
+      {
+        title: "Step 1: Obtain Police Abstract at Nearest Station",
+        detail: "Record the loss of your National ID at a police station and obtain a stamped Police Abstract form.",
+      },
+      {
+        title: "Step 2: Lodge Application at Huduma Centre or NRB Sub-County Office",
+        detail: "Present your Police Abstract, previous ID number or copy, and birth certificate. Pay the KSh 1,000 gazetted replacement fee via eCitizen Paybill 222222.",
+      },
+      {
+        title: "Step 3: Biometric Fingerprint & Photograph Capture",
+        detail: "The registration officer captures digital fingerprints and photograph, and issues a temporary Form 7 waiting slip.",
+      },
+      {
+        title: "Step 4: Collection of Duplicate / Maisha Namba Card",
+        detail: "Track SMS notification and collect your newly printed National Identity Card at the designated centre upon surrendering the waiting slip.",
+      },
+    ],
+    takeaways: [
+      "The statutory fee for replacing a lost Kenyan National ID is KSh 1,000.",
+      "A temporary Form 7 waiting slip is issued immediately upon biometric enrollment and serves as valid interim identification.",
+      "Always notify your mobile carrier to block unauthorized SIM swaps using your lost ID number.",
+    ],
+    warningNotice: "Protect your lost ID details by requesting an immediate SIM swap alert from your telecom provider to prevent mobile money and banking identity theft.",
+    recommendedPhoto: "/src/assets/images/serikali_land_documents_1791740090187.jpg",
+  },
 ];
 
 /**
@@ -493,5 +635,133 @@ export function synthesizeAuthoritativeService(topic: string) {
         steps: knowledge.proceduralSteps,
       },
     ],
+  };
+}
+
+/**
+ * Validation Step: Ensures generated regulatory blog meets strict factual accuracy standards.
+ * Verifies presence of official .go.ke portal, governing legislation, statutory forms,
+ * exact gazetted fee numbers, and actionable procedural steps.
+ */
+export interface AccuracyValidationResult {
+  isValid: boolean;
+  score: number;
+  missingRequirements: string[];
+  validatedData: any;
+}
+
+export function validateRegulatoryAccuracy(
+  generated: any,
+  topic: string,
+  knowledge: RegulatoryTopicKnowledge
+): AccuracyValidationResult {
+  const missing: string[] = [];
+  let score = 100;
+
+  if (!generated || typeof generated !== "object") {
+    return {
+      isValid: false,
+      score: 0,
+      missingRequirements: ["AI response was empty or not a valid object"],
+      validatedData: synthesizeAuthoritativeBlog(topic, knowledge.category),
+    };
+  }
+
+  // Ensure clone to mutate safely
+  const data = { ...generated };
+
+  // 1. Mandatory Official Government Portal Check (must end in .go.ke)
+  const portal = String(data.officialPortal || "").toLowerCase().trim();
+  if (!portal || !portal.includes(".go.ke")) {
+    missing.push("Missing or invalid official government portal (must be a verified .go.ke domain)");
+    score -= 20;
+    data.officialPortal = knowledge.officialPortal;
+  }
+
+  // 2. Governing Legislation & Acts of Parliament Check
+  const combinedText = `${data.content || ""} ${data.sectionBody || ""} ${data.excerpt || ""} ${data.subtitle || ""}`;
+  const hasStatute = /act|regulation|cap\.|constitution|statut|decree|gazette/i.test(combinedText);
+  if (!hasStatute) {
+    missing.push(`Missing statutory legal citation (must ground requirements in ${knowledge.governingLaw})`);
+    score -= 20;
+  }
+
+  // 3. Official Statutory Forms Citation Check
+  const hasFormCitation =
+    knowledge.statutoryForms.some((form) => {
+      const formCode = form.split(" ")[0].toLowerCase();
+      return combinedText.toLowerCase().includes(formCode);
+    }) || /form\s+\d+|cr12|bof1|c24|prn|tcc|etims|alien\s+card/i.test(combinedText);
+
+  if (!hasFormCitation) {
+    missing.push(`Missing mandatory statutory form citation (${knowledge.statutoryForms[0]})`);
+    score -= 20;
+  }
+
+  // 4. Gazetted Statutory Fee Check (Must cite numbers in KSh or USD)
+  const hasFeeMention = /ksh|usd|\$|shillings|fee/i.test(combinedText);
+  const hasNumericFee = /\b\d{1,3}(,\d{3})+|\b\d{3,6}\b|usd\s*\d+/i.test(combinedText);
+  if (!hasFeeMention || !hasNumericFee) {
+    missing.push("Missing specific gazetted fee figures in KSh or USD");
+    score -= 20;
+  }
+
+  // 5. Anti-Generic Filler Phrasing Filter
+  const hasGenericFiller =
+    /lorem ipsum|various documents|as required by law|applicable fees|relevant authorities|consult local desk/i.test(
+      combinedText
+    );
+  if (hasGenericFiller || combinedText.length < 250) {
+    missing.push("Content contains generic placeholder phrasing instead of specific procedural facts");
+    score -= 20;
+  }
+
+  // 6. Actionable Takeaways & Checklist Check
+  if (!Array.isArray(data.keyTakeaways) || data.keyTakeaways.length < 3) {
+    missing.push("Fewer than 3 structured key takeaways provided");
+    score -= 10;
+    data.keyTakeaways = knowledge.takeaways;
+  }
+
+  if (!Array.isArray(data.checklist) || data.checklist.length < 3) {
+    data.checklist = knowledge.prerequisites;
+  }
+
+  // 7. Enforce Category, Author & Visual Asset Alignment
+  if (!data.categoryId) {
+    data.categoryId = knowledge.category;
+    data.categoryName = knowledge.categoryName;
+    data.subCategoryName = knowledge.subCategoryName;
+  }
+  if (!data.image || data.image.includes("example.com") || !data.image.trim()) {
+    data.image = knowledge.recommendedPhoto;
+  }
+  if (!data.author) {
+    data.author = "Serikali Legal & Regulatory Desk";
+    data.authorRole = "Lead Regulatory Specialist";
+  }
+
+  // 8. Repair / Augment Content if Accuracy Threshold (< 70) or Crucial Data Missing
+  if (score < 70 || missing.length >= 2 || !data.content || data.content.length < 300) {
+    const fallbackDossier = synthesizeAuthoritativeBlog(topic, knowledge.category);
+
+    const statutorySection = `\n\n## Statutory Compliance Dossier & Verified Gazetted Data\n\n- **Governing Law**: ${knowledge.governingLaw}\n- **Regulatory Agency**: ${knowledge.regulatoryAgency}\n- **Official Filing Portal**: [${knowledge.officialPortal}](https://${knowledge.officialPortal})\n- **Gazetted Statutory Fees**: ${knowledge.gazettedFees}\n- **Mandatory Statutory Forms**: ${knowledge.statutoryForms.join(", ")}\n- **Official Processing Timeline**: ${knowledge.processingTimeline}\n\n### Official Procedural Steps:\n${knowledge.proceduralSteps.map((s, idx) => `**Step ${idx + 1}: ${s.title}** - ${s.detail}`).join("\n\n")}\n\n> **Official Statutory Notice**: ${knowledge.warningNotice}`;
+
+    data.content = data.content ? `${data.content}${statutorySection}` : fallbackDossier.content;
+
+    if (!data.sectionBody || data.sectionBody.length < 100) {
+      data.sectionBody = fallbackDossier.sectionBody;
+      data.sectionHeading = fallbackDossier.sectionHeading;
+    }
+    if (!data.excerpt || data.excerpt.length < 60) {
+      data.excerpt = fallbackDossier.excerpt;
+    }
+  }
+
+  return {
+    isValid: score >= 60,
+    score: Math.max(score, 0),
+    missingRequirements: missing,
+    validatedData: data,
   };
 }

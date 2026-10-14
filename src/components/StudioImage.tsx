@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Landmark } from 'lucide-react';
 
 interface StudioImageProps {
@@ -11,6 +11,7 @@ interface StudioImageProps {
   priority?: boolean;
   width?: number | string;
   height?: number | string;
+  fallbackSrc?: string;
 }
 
 export const StudioImage: React.FC<StudioImageProps> = ({
@@ -23,11 +24,36 @@ export const StudioImage: React.FC<StudioImageProps> = ({
   priority = false,
   width,
   height,
+  fallbackSrc,
 }) => {
+  const [currentSrc, setCurrentSrc] = useState(src);
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  if (hasError || !src) {
+  useEffect(() => {
+    setCurrentSrc(src);
+    setHasError(false);
+    setIsLoaded(false);
+  }, [src]);
+
+  const handleError = () => {
+    // If the path failed and was /src/assets/images/..., try /images/...
+    if (currentSrc && currentSrc.includes('/src/assets/images/')) {
+      const altSrc = currentSrc.replace('/src/assets/images/', '/images/');
+      if (altSrc !== currentSrc) {
+        setCurrentSrc(altSrc);
+        return;
+      }
+    }
+    // If fallbackSrc was provided and we haven't tried it yet
+    if (fallbackSrc && currentSrc !== fallbackSrc) {
+      setCurrentSrc(fallbackSrc);
+      return;
+    }
+    setHasError(true);
+  };
+
+  if (hasError || !currentSrc) {
     return (
       <div
         className={`flex flex-col items-center justify-center bg-[#EAE9E4] text-[#6E6D68] p-6 select-none ${containerClassName}`}
@@ -51,7 +77,7 @@ export const StudioImage: React.FC<StudioImageProps> = ({
         />
       )}
       <img
-        src={src}
+        src={currentSrc}
         alt={alt}
         width={width}
         height={height}
@@ -59,7 +85,7 @@ export const StudioImage: React.FC<StudioImageProps> = ({
         loading={priority ? 'eager' : 'lazy'}
         decoding="async"
         onLoad={() => setIsLoaded(true)}
-        onError={() => setHasError(true)}
+        onError={handleError}
         className={`transition-opacity duration-300 ${
           isLoaded ? 'opacity-100' : 'opacity-0'
         } ${useCutout ? 'studio-cutout' : ''} ${className}`}
