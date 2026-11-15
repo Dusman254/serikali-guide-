@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
@@ -137,6 +138,27 @@ async function startServer() {
     }
   });
 
+  // Serve uploaded media files directly from public/uploads or /tmp before Vite SPA fallback
+  app.use('/uploads', express.static(path.resolve(process.cwd(), 'public/uploads'), {
+    maxAge: '365d',
+  }));
+  app.get('/uploads/:filename', (req, res) => {
+    const safeName = path.basename(req.params.filename || '');
+    const pubPath = path.resolve(process.cwd(), 'public/uploads', safeName);
+    if (fs.existsSync(pubPath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.sendFile(pubPath);
+      return;
+    }
+    const tmpPath = path.resolve('/tmp', safeName);
+    if (fs.existsSync(tmpPath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.sendFile(tmpPath);
+      return;
+    }
+    res.status(404).json({ error: 'Uploaded file not found.' });
+  });
+
   // Mount Blog & Media Persistent API Routes
   app.use('/api', blogApiRouter);
 
@@ -169,7 +191,7 @@ async function startServer() {
       });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents: `Generate complete electronics product details for the Tech Sokoni store from this exact user input:
 "${query.trim()}"
 
@@ -385,7 +407,7 @@ STRICT FIDELITY RULES:
       });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents: `User Question / Search Query: "${cleanQuery}"
 Target Language: ${language || 'en'}
 
@@ -502,12 +524,12 @@ Provide an accurate, practical, and interactive answer based directly on the Ser
       });
 
       const prompt = `You are the Senior Editorial Director and Kenya Regulatory Counsel at SERIKALI GUIDE (Kenya's One Border Stop Post).
-Today is in 2026.
+Current Date: November 2026.
 Generate an authentic, legally precise, up-to-date, and comprehensive blog guide for the topic: "${topic}".
-Ensure all information reflects current Kenyan laws (e.g. Kenya Citizenship & Immigration Act, Companies Act 2015, Tax Procedures Act, NGO Coordination Act / PBORA, Ardhisasa, etc.), realistic government portals (ending in .go.ke), actual processing fees, and practical timelines.`;
+Ensure all information reflects current November 2026 Kenyan laws (Kenya Citizenship & Immigration Act, Companies Act 2015, Tax Procedures Act & eTIMS, Social Health Authority SHA/SHIF replacing NHIF, PBO Act 2013 & PBORA, Maisha Namba, Kenya eTA, Ardhisasa, etc.), realistic government portals (ending in .go.ke), actual processing fees, and practical timelines.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents: prompt,
         config: {
           systemInstruction:
@@ -672,12 +694,12 @@ Ensure all information reflects current Kenyan laws (e.g. Kenya Citizenship & Im
       });
 
       const prompt = `You are the Chief Regulatory & Civic Architect at SERIKALI GUIDE Kenya.
-Today is in 2026.
+Current Date: November 2026.
 Generate authentic, verified, and true-to-life Kenyan government service pillar details and 2 to 3 real sub-categories for: "${topic}".
-Make sure all agency names (e.g. Directorate of Immigration Services, Business Registration Service, KRA, EPZA, NEMA, PBORA, etc.), government portals (.go.ke), statutory notes, realistic fees (KSh or USD), and step-by-step procedures represent genuine Kenyan public administration.`;
+Make sure all agency names (e.g. Directorate of Immigration Services, Business Registration Service, KRA, SHA, EPZA, NEMA, PBORA, etc.), government portals (.go.ke), statutory notes, realistic fees (KSh or USD), and step-by-step procedures represent genuine November 2026 Kenyan public administration.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents: prompt,
         config: {
           systemInstruction:

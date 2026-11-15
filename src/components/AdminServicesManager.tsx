@@ -17,9 +17,13 @@ import {
   Sparkles,
   CreditCard,
   Building,
+  Upload,
+  Image as ImageIcon,
+  Loader2,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useSerikali } from '../context/SerikaliContext';
+import { blogDbService } from '../services/blogDbService';
 import {
   ManagedServiceItem,
   ServiceStatus,
@@ -58,6 +62,8 @@ export const AdminServicesManager: React.FC = () => {
   const [formStatus, setFormStatus] = useState<ServiceStatus>('ACTIVE');
   const [formProcessingInfo, setFormProcessingInfo] = useState('10 to 15 working days');
   const [formRequirementsText, setFormRequirementsText] = useState('');
+  const [formImage, setFormImage] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // Questions & Documents
   const [formQuestions, setFormQuestions] = useState<ServiceQuestionConfig[]>([]);
@@ -101,6 +107,7 @@ export const AdminServicesManager: React.FC = () => {
     setFormStatus(svc.status);
     setFormProcessingInfo(svc.processingInfo || '10 to 15 working days');
     setFormRequirementsText((svc.requirements || []).join('\n'));
+    setFormImage(svc.image || '');
     setFormQuestions(svc.questions || []);
     setFormDocuments(svc.documents || []);
   };
@@ -119,6 +126,7 @@ export const AdminServicesManager: React.FC = () => {
     setFormStatus('ACTIVE');
     setFormProcessingInfo('10 to 15 working days');
     setFormRequirementsText('Original National ID + copy\nRecent passport photographs');
+    setFormImage('');
     setFormQuestions([
       {
         id: `q-${Date.now()}-1`,
@@ -135,6 +143,32 @@ export const AdminServicesManager: React.FC = () => {
         isMandatory: true,
       },
     ]);
+  };
+
+  const handleServiceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid PNG, JPG, or WebP image.');
+      return;
+    }
+    setIsUploadingImage(true);
+    try {
+      const res = await blogDbService.uploadImage(file);
+      const chosenUrl =
+        res.url && !res.url.startsWith('data:')
+          ? res.url
+          : res.dataUrl || res.url;
+      if (chosenUrl) {
+        setFormImage(chosenUrl);
+        showToast('Service cover photo uploaded and ready to save.');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Service photo upload notice.');
+    } finally {
+      setIsUploadingImage(false);
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleCancelForm = () => {
@@ -214,6 +248,7 @@ export const AdminServicesManager: React.FC = () => {
       currency: formCurrency.trim() || 'KES',
       status: formStatus,
       processingInfo: formProcessingInfo.trim(),
+      image: formImage.trim() || undefined,
       requirements: reqs,
       questions: formQuestions,
       documents: formDocuments,
@@ -374,6 +409,57 @@ export const AdminServicesManager: React.FC = () => {
               placeholder="Clear summary describing what the client is applying for..."
               className="w-full px-3 py-2 bg-[#EAE9E4] border border-[#141413]/25 text-xs text-[#141413] focus:outline-none focus:border-[#141413]"
             />
+          </div>
+
+          {/* Service Cover Photo Upload */}
+          <div className="bg-[#EAE9E4]/60 border border-[#141413]/15 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-20 h-14 bg-[#141413]/10 border border-[#141413]/15 overflow-hidden shrink-0 flex items-center justify-center">
+                {formImage ? (
+                  <img
+                    src={formImage}
+                    alt={formName || 'Service preview'}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <ImageIcon className="w-5 h-5 text-[#6E6D68]" />
+                )}
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-mono-num uppercase text-[#141413] font-semibold block">
+                  Service Cover Photo
+                </label>
+                <p className="text-[11px] text-[#5E5D59]">
+                  Displayed live across service cards and the Get Started flow.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="px-3.5 py-2 bg-[#141413] hover:bg-[#2B2B28] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+                {isUploadingImage ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5 text-[#D94E34]" />
+                )}
+                <span>{isUploadingImage ? 'Uploading...' : 'Upload Photo'}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={handleServiceImageUpload}
+                  className="hidden"
+                />
+              </label>
+              {formImage && (
+                <button
+                  type="button"
+                  onClick={() => setFormImage('')}
+                  className="px-2.5 py-2 border border-[#141413]/20 text-[11px] font-mono-num text-[#D94E34] hover:bg-[#D94E34] hover:text-[#F4F3EF] cursor-pointer"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Section 2: PRICING CONFIGURATION (Separating Service Fee from Government Fee) */}
@@ -741,6 +827,15 @@ export const AdminServicesManager: React.FC = () => {
               }`}
             >
               <div>
+                {svc.image && (
+                  <div className="w-full h-28 mb-3 bg-[#EAE9E4] border border-[#141413]/10 overflow-hidden">
+                    <img
+                      src={svc.image}
+                      alt={svc.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span className="text-[10px] font-mono-num uppercase tracking-wider text-[#6E6D68]">
                     {svc.categoryName}

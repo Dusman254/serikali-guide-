@@ -2,35 +2,46 @@
   <rect width="1200" height="630" fill="#141413"/>
   <rect x="40" y="40" width="1120" height="550" fill="#F4F3EF" stroke="#141413" stroke-width="4"/>
   <rect x="60" y="60" width="1080" height="8" fill="#D94E34"/>
-  
+  <rect x="60" y="68" width="1080" height="4" fill="#1F6F43"/>
+
+  <!-- Serikali Guide Emblem -->
+  <g transform="translate(100, 102) scale(1.35)">
+    <rect x="2" y="2" width="60" height="60" rx="14" fill="#141413"/>
+    <rect x="4" y="4" width="56" height="56" rx="12" stroke="#D94E34" stroke-width="1.5" stroke-opacity="0.45"/>
+    <rect x="12" y="47" width="40" height="5" rx="2.5" fill="#1F6F43"/>
+    <circle cx="32" cy="18" r="6" fill="#D94E34"/>
+    <path d="M15 44V30C15 20.6112 22.6112 13 32 13C41.3888 13 49 20.6112 49 30V44H41.5V30C41.5 24.7533 37.2467 20.5 32 20.5C26.7533 20.5 22.5 24.7533 22.5 30V44H15Z" fill="#F4F3EF"/>
+    <path d="M32 26L36.5 35.5H27.5L32 26Z" fill="#D94E34"/>
+    <rect x="29" y="38" width="6" height="6" rx="1" fill="#F4F3EF"/>
+  </g>
+
   <!-- Brand Header -->
-  <text x="100" y="150" font-family="'JetBrains Mono', monospace" font-size="20" letter-spacing="4" fill="#6E6D68" font-weight="600">REPUBLIC OF KENYA · CIVIC &amp; REGULATORY PLATFORM</text>
-  
-  <text x="100" y="240" font-family="'Instrument Serif', serif" font-size="78" fill="#141413" font-weight="700">SERIKALI GUIDE</text>
-  
+  <text x="215" y="138" font-family="'JetBrains Mono', monospace" font-size="18" letter-spacing="4" fill="#6E6D68" font-weight="600">REPUBLIC OF KENYA · CIVIC &amp; REGULATORY PLATFORM</text>
+  <text x="215" y="198" font-family="'Instrument Serif', serif" font-size="72" fill="#141413" font-weight="700">Serikali <tspan fill="#D94E34">Guide</tspan></text>
+
   <!-- Tagline with red border -->
-  <text x="100" y="320" font-family="'Instrument Serif', serif" font-size="46" fill="#141413">
+  <text x="100" y="305" font-family="'Instrument Serif', serif" font-size="48" fill="#141413">
     Your one <tspan fill="#D94E34">border</tspan> stop post.
   </text>
-  
-  <text x="100" y="390" font-family="'Plus Jakarta Sans', sans-serif" font-size="24" fill="#5E5D59">
+
+  <text x="100" y="375" font-family="'Plus Jakarta Sans', sans-serif" font-size="24" fill="#5E5D59">
     Verified Procedural Guides: Immigration, Visas, Work Permits, Business BRS, NGOs, &amp; KRA Tax.
   </text>
-  
-  <!-- Pill Badges -->
-  <g transform="translate(100, 450)">
+
+  <!-- Badges -->
+  <g transform="translate(100, 445)">
     <rect width="180" height="44" fill="#141413"/>
     <text x="90" y="28" font-family="'JetBrains Mono', monospace" font-size="14" fill="#F4F3EF" text-anchor="middle" font-weight="600">eCitizen Portal</text>
   </g>
-  <g transform="translate(300, 450)">
+  <g transform="translate(300, 445)">
     <rect width="180" height="44" fill="#EAE9E4" stroke="#141413" stroke-width="1.5"/>
     <text x="90" y="28" font-family="'JetBrains Mono', monospace" font-size="14" fill="#141413" text-anchor="middle" font-weight="600">BRS Company Reg</text>
   </g>
-  <g transform="translate(500, 450)">
+  <g transform="translate(500, 445)">
     <rect width="180" height="44" fill="#EAE9E4" stroke="#141413" stroke-width="1.5"/>
     <text x="90" y="28" font-family="'JetBrains Mono', monospace" font-size="14" fill="#141413" text-anchor="middle" font-weight="600">eFNS Work Permits</text>
   </g>
-  <g transform="translate(700, 450)">
+  <g transform="translate(700, 445)">
     <rect width="180" height="44" fill="#EAE9E4" stroke="#141413" stroke-width="1.5"/>
     <text x="90" y="28" font-family="'JetBrains Mono', monospace" font-size="14" fill="#141413" text-anchor="middle" font-weight="600">KRA Tax Filing</text>
   </g>

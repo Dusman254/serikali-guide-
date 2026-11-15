@@ -20,9 +20,12 @@ import {
   RotateCcw,
   Sparkles,
   PlusCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useSerikali } from '../context/SerikaliContext';
+import { SerikaliLogoMark } from './SerikaliLogo';
 import {
   ManagedServiceItem,
   ServiceQuestionConfig,
@@ -33,11 +36,23 @@ import {
 import { ServiceCategoryId } from '../data/serikaliData';
 import { trackEvent } from '../utils/analytics';
 
+function extractMpesaReceiptCode(raw: string): string {
+  if (!raw) return '';
+  const upper = raw.toUpperCase().trim();
+  const match = upper.match(/\b([A-Z][A-Z0-9]{9})\b/);
+  if (match) return match[1];
+  const compact = upper.replace(/[^A-Z0-9]/g, '');
+  if (/^[A-Z0-9]{10}$/.test(compact)) return compact;
+  return '';
+}
+
 export const GetStartedFlow: React.FC = () => {
-  const { navigate } = useStore();
+  const { navigate, showToast } = useStore();
   const {
     managedServices,
     submitServiceRequest,
+    paymentSettings,
+    clientSessionId,
     isGetStartedOpen,
     closeGetStarted,
     getStartedPreselectedServiceId,
@@ -71,17 +86,22 @@ export const GetStartedFlow: React.FC = () => {
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDocumentItem[]>([]);
   const [uploadError, setUploadError] = useState('');
 
-  // Step 6: Payment state
-  const [paymentMethod, setPaymentMethod] = useState<'mpesa' | 'card'>('mpesa');
-  const [mpesaPhone, setMpesaPhone] = useState('');
+  // Step 6: M-Pesa Paybill + Pasted SMS Confirmation state
+  const [mpesaMessageInput, setMpesaMessageInput] = useState('');
+  const [copiedField, setCopiedField] = useState<'paybill' | 'account' | 'ref' | null>(null);
+  const [paymentError, setPaymentError] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<
     'pending' | 'verifying' | 'confirmed' | 'failed'
   >('pending');
-  const [paymentTxnRef, setPaymentTxnRef] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(true);
 
   // Step 7: Completed Request Record
   const [createdRequest, setCreatedRequest] = useState<ServiceRequestSubmission | null>(null);
+
+  const extractedMpesaCode = useMemo(
+    () => extractMpesaReceiptCode(mpesaMessageInput),
+    [mpesaMessageInput]
+  );
 
   // Synchronize preselected service when opened with context
   useEffect(() => {
@@ -93,13 +113,6 @@ export const GetStartedFlow: React.FC = () => {
       }
     }
   }, [getStartedPreselectedServiceId, managedServices]);
-
-  // Keep M-Pesa phone in sync with client phone
-  useEffect(() => {
-    if (!mpesaPhone && clientPhone) {
-      setMpesaPhone(clientPhone);
-    }
-  }, [clientPhone, mpesaPhone]);
 
   // Track user funnel progress across steps
   useEffect(() => {
@@ -266,15 +279,33 @@ export const GetStartedFlow: React.FC = () => {
     setAnswers({});
     setUploadedDocs([]);
     setPaymentStatus('pending');
-    setPaymentTxnRef('');
+    setMpesaMessageInput('');
+    setPaymentError('');
     setCreatedRequest(null);
-    setTermsAccepted(false);
+    setTermsAccepted(true);
     setUploadError('');
   };
 
-  // Step 6 Payment Confirmation simulation
+  const handleCopyPaybillDetail = (value: string, field: 'paybill' | 'account' | 'ref', label: string) => {
+    if (!value) return;
+    navigator.clipboard?.writeText(value).catch(() => {});
+    setCopiedField(field);
+    showToast(`Copied ${label}: ${value}`);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  // Step 6 Paybill Submission + Pasted M-Pesa SMS Verification (Admin Confirms)
   const handleExecutePayment = () => {
     if (!selectedService) return;
+    const rawMsg = mpesaMessageInput.trim();
+    if (rawMsg.length < 8) {
+      setPaymentError(
+        'Please paste your M-Pesa Paybill confirmation SMS message or 10-character transaction code before submitting.'
+      );
+      return;
+    }
+
+    setPaymentError('');
     setPaymentStatus('verifying');
 
     const totalToPay = Math.max(
@@ -284,54 +315,45 @@ export const GetStartedFlow: React.FC = () => {
         (selectedService.discount || 0)
     );
 
-    setTimeout(() => {
-      const generatedTxnRef =
-        paymentMethod === 'mpesa'
-          ? `MPESA-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
-          : `CARD-TXN-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const code = extractMpesaReceiptCode(rawMsg);
+    const displayRef = code || rawMsg.slice(0, 24).toUpperCase();
 
-      setPaymentTxnRef(generatedTxnRef);
-      setPaymentStatus('confirmed');
+    const created = submitServiceRequest({
+      serviceId: selectedService.id,
+      serviceName: selectedService.name,
+      category: selectedService.category,
+      categoryName: selectedService.categoryName,
+      serviceFee: selectedService.serviceFee,
+      governmentFee: selectedService.governmentFee,
+      governmentFeeIncluded: selectedService.governmentFeeIncluded,
+      discount: selectedService.discount || 0,
+      totalPaid: totalToPay,
+      currency: selectedService.currency,
+      clientName,
+      clientEmail,
+      clientPhone,
+      clientNationality,
+      answers,
+      documents: uploadedDocs,
+      paymentMethod: 'mpesa-paybill',
+      paymentReference: displayRef,
+      mpesaMessage: rawMsg,
+      mpesaCode: code || undefined,
+      paybillNumber: paymentSettings.paybillNumber || '',
+      paybillAccountRef: paymentSettings.paybillAccountReference || clientName,
+      paymentStatus: 'verifying',
+      clientSessionId,
+    });
 
-      // Submit persistent request to SerikaliContext
-      const created = submitServiceRequest({
-        serviceId: selectedService.id,
-        serviceName: selectedService.name,
-        category: selectedService.category,
-        categoryName: selectedService.categoryName,
-        serviceFee: selectedService.serviceFee,
-        governmentFee: selectedService.governmentFee,
-        governmentFeeIncluded: selectedService.governmentFeeIncluded,
-        discount: selectedService.discount || 0,
-        totalPaid: totalToPay,
-        currency: selectedService.currency,
-        clientName,
-        clientEmail,
-        clientPhone,
-        clientNationality,
-        answers,
-        documents: uploadedDocs,
-        paymentMethod,
-        paymentReference: generatedTxnRef,
-        paymentStatus: 'confirmed',
-        paidAt: new Date().toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      });
-
-      setCreatedRequest(created);
-      setCurrentStep(7);
-      trackEvent('funnel_completed', {
-        serviceId: selectedService.id,
-        serviceName: selectedService.name,
-        referenceNumber: created.referenceNumber,
-        amount: totalToPay,
-      });
-    }, 1800);
+    setCreatedRequest(created);
+    setPaymentStatus('pending');
+    setCurrentStep(7);
+    trackEvent('funnel_completed', {
+      serviceId: selectedService.id,
+      serviceName: selectedService.name,
+      referenceNumber: created.referenceNumber,
+      amount: totalToPay,
+    });
   };
 
   const stepsList = [
@@ -355,9 +377,7 @@ export const GetStartedFlow: React.FC = () => {
         {/* Top Header Bar */}
         <div className="flex items-center justify-between pb-4 border-b border-[#141413]/12">
           <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 bg-[#141413] text-[#F4F3EF] flex items-center justify-center rounded-xs text-[11px] font-mono-num font-bold">
-              SG
-            </div>
+            <SerikaliLogoMark size={28} className="shrink-0" />
             <div>
               <span className="text-[11px] font-mono-num uppercase tracking-[0.2em] text-[#141413] font-semibold block leading-none">
                 SERIKALI GUIDE · SERVICE APPLICATION
@@ -1382,97 +1402,144 @@ export const GetStartedFlow: React.FC = () => {
               </div>
             </div>
 
-            {/* Payment Gateway Options */}
-            <div className="bg-[#F4F3EF] border border-[#141413]/15 p-5 space-y-4">
-              <span className="text-[11px] font-mono-num uppercase tracking-wider text-[#6E6D68] font-bold block">
-                SELECT PAYMENT METHOD
-              </span>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('mpesa')}
-                  className={`p-3 border text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
-                    paymentMethod === 'mpesa'
-                      ? 'bg-[#141413] text-[#F4F3EF] border-[#141413]'
-                      : 'bg-[#EAE9E4]/60 text-[#141413] border-[#141413]/20'
-                  }`}
-                >
+            {/* Paybill Payment Instructions + Paste M-Pesa SMS */}
+            <div className="bg-[#F4F3EF] border border-[#141413]/15 p-5 sm:p-6 space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#141413]/10 pb-3">
+                <div className="flex items-center gap-2">
                   <Phone className="w-4 h-4 text-[#1F6F43]" />
-                  <div>
-                    <span className="text-xs font-mono-num font-bold block">M-Pesa Express</span>
-                    <span className="text-[10px] opacity-75">Instant STK prompt</span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('card')}
-                  className={`p-3 border text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
-                    paymentMethod === 'card'
-                      ? 'bg-[#141413] text-[#F4F3EF] border-[#141413]'
-                      : 'bg-[#EAE9E4]/60 text-[#141413] border-[#141413]/20'
-                  }`}
-                >
-                  <CreditCard className="w-4 h-4 text-[#D94E34]" />
-                  <div>
-                    <span className="text-xs font-mono-num font-bold block">Card Payment</span>
-                    <span className="text-[10px] opacity-75">Visa / Mastercard</span>
-                  </div>
-                </button>
+                  <span className="text-xs font-mono-num uppercase tracking-wider text-[#141413] font-bold">
+                    LIPA NA M-PESA PAYBILL CHECKOUT
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono-num uppercase px-2 py-0.5 bg-[#1F6F43]/10 text-[#1F6F43] font-semibold">
+                  Verified by Admin Desk
+                </span>
               </div>
 
-              {/* M-Pesa Input */}
-              {paymentMethod === 'mpesa' && (
-                <div className="space-y-2 pt-2 border-t border-[#141413]/10">
-                  <label className="text-xs font-mono-num text-[#141413] font-medium block">
-                    M-Pesa Mobile Number:
-                  </label>
-                  <input
-                    type="tel"
-                    value={mpesaPhone}
-                    onChange={(e) => setMpesaPhone(e.target.value)}
-                    placeholder="e.g. 0712345678"
-                    className="w-full bg-[#EAE9E4] border border-[#141413]/20 px-3 py-2 text-xs font-mono-num text-[#141413] focus:outline-none focus:border-[#141413]"
-                  />
-                  <p className="text-[11px] text-[#6E6D68]">
-                    An instant M-Pesa STK push prompt will be sent to this phone to enter your PIN.
+              {paymentSettings.paybillNumber ? (
+                <div className="bg-[#141413] text-[#F4F3EF] p-4 sm:p-5 space-y-3 font-mono-num">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[10px] uppercase tracking-widest text-[#A09F99] block">
+                        Business Paybill Number
+                      </span>
+                      <span className="text-2xl font-bold tracking-wider text-[#F4F3EF]">
+                        {paymentSettings.paybillNumber}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopyPaybillDetail(
+                          paymentSettings.paybillNumber,
+                          'paybill',
+                          'Paybill Number'
+                        )
+                      }
+                      className="px-3 py-1.5 bg-[#D94E34] hover:bg-[#BF3E26] text-[#F4F3EF] text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedField === 'paybill' ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      <span>{copiedField === 'paybill' ? 'Copied' : 'Copy Paybill'}</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#F4F3EF]/15 text-xs">
+                    <div>
+                      <span className="text-[10px] uppercase text-[#A09F99] block">
+                        Business Name
+                      </span>
+                      <span className="text-[#F4F3EF] font-semibold">
+                        {paymentSettings.paybillAccountName || 'Serikali Guide Services'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase text-[#A09F99] block">
+                        Account Number
+                      </span>
+                      <span className="text-[#F4F3EF] font-semibold">
+                        {clientName.trim() || paymentSettings.paybillAccountReference || 'Your Full Name'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-[#EAE9E4] border border-[#D94E34]/40 text-xs text-[#141413] space-y-1">
+                  <p className="font-mono-num uppercase text-[11px] font-bold text-[#D94E34]">
+                    Paybill Number Pending Admin Setup
+                  </p>
+                  <p className="text-[#5E5D59]">
+                    Our Business Paybill is being updated in the Admin Console. Contact our Nairobi desk on WhatsApp (<strong>0795762978</strong>) to receive the active Paybill details, then paste your M-Pesa SMS below.
                   </p>
                 </div>
               )}
 
-              {/* Card Inputs */}
-              {paymentMethod === 'card' && (
-                <div className="space-y-3 pt-2 border-t border-[#141413]/10 text-xs font-mono-num">
-                  <div className="space-y-1">
-                    <label className="text-[#141413]">Card Number</label>
-                    <input
-                      type="text"
-                      placeholder="4123 ···· ···· 8901"
-                      className="w-full bg-[#EAE9E4] border border-[#141413]/20 px-3 py-2 text-xs font-mono-num focus:outline-none"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[#141413]">MM / YY</label>
-                      <input
-                        type="text"
-                        placeholder="12/28"
-                        className="w-full bg-[#EAE9E4] border border-[#141413]/20 px-3 py-2 text-xs font-mono-num focus:outline-none"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[#141413]">CVV</label>
-                      <input
-                        type="password"
-                        placeholder="···"
-                        maxLength={4}
-                        className="w-full bg-[#EAE9E4] border border-[#141413]/20 px-3 py-2 text-xs font-mono-num focus:outline-none"
-                      />
-                    </div>
-                  </div>
+              <div className="bg-[#EAE9E4]/65 border border-[#141413]/12 p-4 space-y-1.5 text-xs text-[#4E4D48]">
+                <p className="font-mono-num uppercase text-[10px] font-bold text-[#141413]">
+                  How to Complete Paybill Payment:
+                </p>
+                <p>1. Open M-Pesa on your phone → <strong>Lipa na M-Pesa</strong> → <strong>Paybill</strong>.</p>
+                <p>
+                  2. Enter Business Number:{' '}
+                  <strong className="font-mono-num text-[#141413]">
+                    {paymentSettings.paybillNumber || 'Provided by Support'}
+                  </strong>{' '}
+                  and Account No:{' '}
+                  <strong className="font-mono-num text-[#141413]">
+                    {clientName.trim() || paymentSettings.paybillAccountReference || 'Your Name'}
+                  </strong>.
+                </p>
+                <p>
+                  3. Enter Amount:{' '}
+                  <strong className="font-mono-num text-[#141413]">
+                    {selectedService.currency}{' '}
+                    {(
+                      selectedService.serviceFee +
+                      (selectedService.governmentFeeIncluded ? selectedService.governmentFee : 0) -
+                      (selectedService.discount || 0)
+                    ).toLocaleString()}
+                  </strong>{' '}
+                  and confirm with your M-Pesa PIN.
+                </p>
+                <p>4. Paste the full M-Pesa confirmation SMS message (or transaction code) below.</p>
+                {paymentSettings.paymentInstructionsNote && (
+                  <p className="pt-1 text-[11px] text-[#141413] font-medium">
+                    Note: {paymentSettings.paymentInstructionsNote}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-xs font-mono-num uppercase tracking-wider text-[#141413] font-bold">
+                    Paste M-Pesa Confirmation Message / Transaction Code *
+                  </label>
+                  {extractedMpesaCode && (
+                    <span className="px-2 py-0.5 bg-[#1F6F43]/15 text-[#1F6F43] text-[10px] font-mono-num font-bold">
+                      Detected Code: {extractedMpesaCode}
+                    </span>
+                  )}
                 </div>
-              )}
+                <textarea
+                  rows={3}
+                  value={mpesaMessageInput}
+                  onChange={(e) => {
+                    setMpesaMessageInput(e.target.value);
+                    if (paymentError) setPaymentError('');
+                  }}
+                  placeholder="Paste the full M-Pesa SMS received on your phone (e.g. UJK48X92MP Confirmed. Ksh2,500.00 sent to...) or enter your 10-character M-Pesa code."
+                  className="w-full bg-[#EAE9E4] border border-[#141413]/25 p-3 text-xs font-mono-num text-[#141413] focus:outline-none focus:border-[#141413]"
+                />
+                {paymentError && (
+                  <p className="text-xs text-[#D94E34] flex items-center gap-1.5 font-medium">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{paymentError}</span>
+                  </p>
+                )}
+              </div>
 
               {/* Terms checkbox */}
               <label className="flex items-start gap-2 pt-2 text-[11px] text-[#5E5D59] cursor-pointer">
@@ -1494,7 +1561,7 @@ export const GetStartedFlow: React.FC = () => {
                   >
                     Terms of Service
                   </button>{' '}
-                  and acknowledge that official statutory authority fees are subject to government gazettement.
+                  and acknowledge that my Paybill transfer will be confirmed by the Serikali Guide Admin desk.
                 </span>
               </label>
             </div>
@@ -1518,19 +1585,11 @@ export const GetStartedFlow: React.FC = () => {
                 {paymentStatus === 'verifying' ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-[#F4F3EF] border-t-transparent rounded-full animate-spin" />
-                    <span>VERIFYING PAYMENT...</span>
+                    <span>SUBMITTING DOSSIER...</span>
                   </>
                 ) : (
                   <>
-                    <span>
-                      PAY KES{' '}
-                      {(
-                        selectedService.serviceFee +
-                        (selectedService.governmentFeeIncluded ? selectedService.governmentFee : 0) -
-                        (selectedService.discount || 0)
-                      ).toLocaleString()}{' '}
-                      &amp; SUBMIT
-                    </span>
+                    <span>SUBMIT M-PESA CONFIRMATION &amp; GET TRACKING NO.</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -1540,7 +1599,7 @@ export const GetStartedFlow: React.FC = () => {
         )}
 
         {/* ===================================================================
-            STEP 7: SERVICE REQUEST CONFIRMATION (Addresses Requirement 18)
+            STEP 7: SERVICE REQUEST CONFIRMATION & ISOLATED TRACKING NUMBER
            =================================================================== */}
         {currentStep === 7 && createdRequest && (
           <div className="py-8 sm:py-12 flex-1 space-y-6 max-w-2xl mx-auto w-full text-center">
@@ -1550,24 +1609,46 @@ export const GetStartedFlow: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <span className="text-[11px] font-mono-num uppercase tracking-widest text-[#1F6F43] font-bold">
-                PAYMENT CONFIRMED · REQUEST CREATED
+              <span className="text-[11px] font-mono-num uppercase tracking-widest text-[#B45309] font-bold">
+                SUBMITTED · AWAITING ADMIN M-PESA CONFIRMATION
               </span>
               <h2 className="font-editorial text-3xl sm:text-5xl text-[#141413]">
-                Service Request Received
+                Application Submitted
               </h2>
               <p className="text-xs sm:text-sm text-[#5E5D59] max-w-md mx-auto">
-                Your application dossier has been successfully submitted to our specialized legal desk.
+                Save your private tracking number below. Our Admin desk will verify your M-Pesa Paybill payment and update your timeline live.
               </p>
             </div>
 
             {/* Reference Card */}
             <div className="bg-[#EAE9E4] border border-[#141413]/25 p-5 sm:p-6 text-left space-y-3 font-mono-num text-xs">
-              <div className="flex justify-between items-center pb-2 border-b border-[#141413]/10">
-                <span className="text-[#6E6D68]">Official Reference:</span>
-                <span className="text-base font-bold text-[#D94E34]">
-                  {createdRequest.referenceNumber}
-                </span>
+              <div className="flex flex-wrap justify-between items-center gap-2 pb-2 border-b border-[#141413]/10">
+                <div>
+                  <span className="text-[#6E6D68] block text-[10px] uppercase">
+                    Your Unique Tracking Number:
+                  </span>
+                  <span className="text-lg font-bold text-[#D94E34]">
+                    {createdRequest.referenceNumber}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleCopyPaybillDetail(
+                      createdRequest.referenceNumber,
+                      'ref',
+                      'Tracking Number'
+                    )
+                  }
+                  className="px-3 py-1.5 bg-[#141413] text-[#F4F3EF] text-[10px] uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                >
+                  {copiedField === 'ref' ? (
+                    <Check className="w-3 h-3" />
+                  ) : (
+                    <Copy className="w-3 h-3" />
+                  )}
+                  <span>{copiedField === 'ref' ? 'Copied' : 'Copy Tracking No.'}</span>
+                </button>
               </div>
 
               <div className="flex justify-between items-center">
@@ -1576,20 +1657,29 @@ export const GetStartedFlow: React.FC = () => {
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-[#6E6D68]">Amount Paid:</span>
+                <span className="text-[#6E6D68]">Paybill Amount Submitted:</span>
                 <span className="font-bold text-[#141413]">
                   {createdRequest.currency} {createdRequest.totalPaid.toLocaleString()}
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-[#6E6D68]">Transaction Ref:</span>
-                <span className="text-[#141413]">{createdRequest.paymentReference}</span>
+                <span className="text-[#6E6D68]">M-Pesa Code / Ref:</span>
+                <span className="text-[#141413] font-semibold">
+                  {createdRequest.mpesaCode || createdRequest.paymentReference}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-[#6E6D68]">Payment Verification:</span>
+                <span className="px-2 py-0.5 bg-[#B45309]/15 text-[#B45309] text-[10px] uppercase font-bold">
+                  Pending Admin Confirmation
+                </span>
               </div>
 
               <div className="flex justify-between items-center pt-2 border-t border-[#141413]/10">
-                <span className="text-[#6E6D68]">Initial Status:</span>
-                <span className="px-2 py-0.5 bg-[#1F6F43] text-[#F4F3EF] text-[10px] uppercase font-bold">
+                <span className="text-[#6E6D68]">Application Status:</span>
+                <span className="px-2 py-0.5 bg-[#141413] text-[#F4F3EF] text-[10px] uppercase font-bold">
                   {createdRequest.status}
                 </span>
               </div>
@@ -1601,13 +1691,13 @@ export const GetStartedFlow: React.FC = () => {
                 WHAT HAPPENS NEXT:
               </span>
               <p className="text-[#5E5D59] leading-relaxed">
-                1. Our regulatory advocates will audit your answers and documents against official Directorate standards within 24 business hours.
+                1. Our Admin finance desk matches your pasted M-Pesa confirmation against our Paybill statement and confirms payment.
               </p>
               <p className="text-[#5E5D59] leading-relaxed">
-                2. You will receive an SMS and WhatsApp alert confirming your finalized submission receipt and booking schedule.
+                2. Once confirmed, our regulatory advocates audit your answers and documents against Directorate standards.
               </p>
               <p className="text-[#5E5D59] leading-relaxed">
-                3. You can track live progress anytime using your reference number: <strong>{createdRequest.referenceNumber}</strong>.
+                3. Track only your application securely anytime on any device using: <strong>{createdRequest.referenceNumber}</strong>.
               </p>
             </div>
 

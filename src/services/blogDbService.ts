@@ -1,4 +1,8 @@
-import { BLOG_POSTS, BlogPost } from '../data/serikaliData';
+import { BLOG_POSTS, BlogDonation, BlogPost } from '../data/serikaliData';
+import {
+  SerikaliPaymentSettings,
+  ServiceRequestSubmission,
+} from '../types/serviceApplication';
 
 const SYNCED_BLOGS_CACHE_KEY = 'serikali_blogs_synced_v2';
 const ADMIN_TOKEN_KEY = 'serikali_admin_token_v1';
@@ -8,9 +12,15 @@ export function getStoredAdminToken(): string | null {
   const token = localStorage.getItem(ADMIN_TOKEN_KEY);
   if (token) return token;
 
-  // Check if admin is currently unlocked in local storage
-  const isUnlocked = localStorage.getItem('serikali_admin_unlocked_v1');
-  if (isUnlocked === 'true' || isUnlocked === '"true"') {
+  // Check if admin is currently unlocked in local storage (v1 or v2)
+  const isUnlockedV2 = localStorage.getItem('serikali_guide_admin_unlocked_v2');
+  const isUnlockedV1 = localStorage.getItem('serikali_admin_unlocked_v1');
+  if (
+    isUnlockedV2 === 'true' ||
+    isUnlockedV2 === '"true"' ||
+    isUnlockedV1 === 'true' ||
+    isUnlockedV1 === '"true"'
+  ) {
     const fallbackToken = 'SG-ADMIN-AUTH-1940';
     localStorage.setItem(ADMIN_TOKEN_KEY, fallbackToken);
     return fallbackToken;
@@ -293,5 +303,163 @@ export const blogDbService = {
   // Logout admin
   adminLogout(): void {
     setStoredAdminToken(null);
+  },
+
+  // Payment Settings (Paybill + Donations Till 9309020)
+  async fetchPaymentSettings(): Promise<SerikaliPaymentSettings | null> {
+    try {
+      const res = await fetch('/api/payment-settings');
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async savePaymentSettings(
+    settings: Partial<SerikaliPaymentSettings>
+  ): Promise<SerikaliPaymentSettings | null> {
+    try {
+      const token = getStoredAdminToken();
+      const res = await fetch('/api/payment-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(settings),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  // Donations (Lipa Na M-Pesa Buy Goods Till 9309020)
+  async fetchDonations(): Promise<BlogDonation[] | null> {
+    try {
+      const token = getStoredAdminToken();
+      const res = await fetch('/api/donations', {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async createDonation(
+    data: Partial<BlogDonation>
+  ): Promise<BlogDonation | null> {
+    try {
+      const res = await fetch('/api/donations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async updateDonationStatus(
+    id: string,
+    paymentStatus: 'confirmed' | 'rejected' | 'verifying'
+  ): Promise<BlogDonation | null> {
+    try {
+      const token = getStoredAdminToken();
+      const res = await fetch(`/api/donations/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ paymentStatus }),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async deleteDonation(id: string): Promise<boolean> {
+    try {
+      const token = getStoredAdminToken();
+      const res = await fetch(`/api/donations/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  // Isolated Service Requests & Unique Tracking Lookup
+  async createServiceRequest(
+    req: ServiceRequestSubmission
+  ): Promise<ServiceRequestSubmission | null> {
+    try {
+      const res = await fetch('/api/service-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async trackServiceRequest(
+    referenceNumber: string
+  ): Promise<ServiceRequestSubmission | null> {
+    try {
+      const clean = referenceNumber.trim().toUpperCase();
+      if (!clean) return null;
+      const res = await fetch(
+        `/api/service-requests/track/${encodeURIComponent(clean)}`
+      );
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async fetchAllServiceRequests(): Promise<ServiceRequestSubmission[] | null> {
+    try {
+      const token = getStoredAdminToken();
+      if (!token) return null;
+      const res = await fetch('/api/service-requests', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async updateServiceRequest(
+    id: string,
+    updates: Partial<ServiceRequestSubmission>
+  ): Promise<ServiceRequestSubmission | null> {
+    try {
+      const token = getStoredAdminToken();
+      const res = await fetch(`/api/service-requests/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(updates),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async deleteServiceRequest(id: string): Promise<boolean> {
+    try {
+      const token = getStoredAdminToken();
+      const res = await fetch(`/api/service-requests/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   },
 };

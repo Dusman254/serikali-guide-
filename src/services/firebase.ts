@@ -560,8 +560,14 @@ export async function seedBlogsToFirestore(blogs: BlogPost[]): Promise<void> {
 
 export async function saveBlogToFirestore(blog: BlogPost): Promise<void> {
   try {
+    const safeBlog: BlogPost =
+      typeof blog.image === 'string' &&
+      blog.image.startsWith('data:') &&
+      blog.image.length > 750000
+        ? { ...blog, image: '' }
+        : blog;
     const docRef = doc(db, 'blog_posts', blog.id);
-    await setDoc(docRef, sanitizeForFirestore(blog), { merge: true });
+    await setDoc(docRef, sanitizeForFirestore(safeBlog), { merge: true });
   } catch (error) {
     console.warn('Firestore write for blog_post failed (local/disk store intact):', error);
   }

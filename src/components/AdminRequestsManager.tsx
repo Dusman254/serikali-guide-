@@ -44,6 +44,8 @@ export const AdminRequestsManager: React.FC = () => {
   const {
     serviceRequests,
     updateServiceRequestStatus,
+    confirmServiceRequestPayment,
+    rejectServiceRequestPayment,
     deleteServiceRequest,
   } = useSerikali();
 
@@ -156,9 +158,10 @@ FINANCIAL AUDIT:
 Assistance Fee     : ${req.currency} ${req.serviceFee.toLocaleString()}
 Government Fee     : ${req.currency} ${req.governmentFee.toLocaleString()} (${req.governmentFeeIncluded ? 'Included' : 'Payable to Agency'})
 Total Remitted     : ${req.currency} ${req.totalPaid.toLocaleString()}
-Payment Method     : ${req.paymentMethod?.toUpperCase()}
-Transaction Ref    : ${req.paymentReference}
+Payment Method     : ${req.paymentMethod?.toUpperCase()} ${req.paybillNumber ? `(Paybill ${req.paybillNumber})` : ''}
+Transaction Ref    : ${req.mpesaCode || req.paymentReference || 'Pending Verification'}
 Payment Status     : ${req.paymentStatus?.toUpperCase()}
+M-Pesa SMS Message : ${req.mpesaMessage || 'N/A'}
 
 ================================================================================
 ISSUED BY: Serikali Guide Legal & Regulatory Desk, Pioneer House, Nairobi CBD
@@ -319,13 +322,25 @@ VERIFIED ON: ${new Date().toUTCString()}
                   <div className="flex items-center gap-4">
                     {/* Payment Badge */}
                     <div className="text-right font-mono-num text-xs">
-                      <span className="text-[#6E6D68] text-[10px] uppercase block">Paid to Serikali</span>
+                      <span className="text-[#6E6D68] text-[10px] uppercase block">
+                        Paybill Amount
+                      </span>
                       <span className="font-bold text-[#141413]">
                         {req.currency} {req.totalPaid.toLocaleString()}
                       </span>
-                      <span className="text-[10px] text-[#1F6F43] block">
-                        ✓ {req.paymentMethod.toUpperCase()} ({req.paymentReference})
-                      </span>
+                      {req.paymentStatus === 'confirmed' ? (
+                        <span className="text-[10px] text-[#1F6F43] font-semibold block">
+                          ✓ CONFIRMED ({req.mpesaCode || req.paymentReference || 'PAYBILL'})
+                        </span>
+                      ) : req.paymentStatus === 'failed' ? (
+                        <span className="text-[10px] text-[#D94E34] font-semibold block">
+                          ✕ PAYMENT FLAGGED ({req.mpesaCode || req.paymentReference || 'UNVERIFIED'})
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-[#B45309] font-semibold block">
+                          ⏳ VERIFYING PAYBILL ({req.mpesaCode || req.paymentReference || 'PENDING'})
+                        </span>
+                      )}
                     </div>
 
                     {/* Current Status Pill */}
@@ -352,6 +367,99 @@ VERIFIED ON: ${new Date().toUTCString()}
                 {/* Expanded Management Drawer */}
                 {isExpanded && (
                   <div className="p-5 sm:p-6 bg-[#EAE9E4]/50 border-t border-[#141413]/15 space-y-6">
+                    {/* M-Pesa Paybill Verification Panel */}
+                    <div className="p-4 bg-[#F4F3EF] border border-[#141413]/20 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#141413]/10 pb-2">
+                        <span className="text-[11px] font-mono-num uppercase tracking-wider text-[#141413] font-bold flex items-center gap-1.5">
+                          <CreditCard className="w-3.5 h-3.5 text-[#D94E34]" />
+                          <span>M-Pesa Paybill Payment Verification</span>
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 text-[10px] font-mono-num font-bold uppercase ${
+                            req.paymentStatus === 'confirmed'
+                              ? 'bg-[#1F6F43]/15 text-[#1F6F43]'
+                              : req.paymentStatus === 'failed'
+                              ? 'bg-[#D94E34]/15 text-[#D94E34]'
+                              : 'bg-[#B45309]/15 text-[#B45309]'
+                          }`}
+                        >
+                          {req.paymentStatus === 'confirmed'
+                            ? 'Confirmed by Admin'
+                            : req.paymentStatus === 'failed'
+                            ? 'Flagged / Unmatched'
+                            : 'Awaiting Admin Confirmation'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono-num">
+                        <div>
+                          <span className="text-[10px] text-[#6E6D68] uppercase block">Amount Due</span>
+                          <strong className="text-[#141413]">
+                            {req.currency} {req.totalPaid.toLocaleString()}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#6E6D68] uppercase block">Paybill No.</span>
+                          <strong className="text-[#141413]">
+                            {req.paybillNumber || 'Configured in Settings'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#6E6D68] uppercase block">Account Ref</span>
+                          <strong className="text-[#141413]">
+                            {req.paybillAccountRef || req.clientName}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#6E6D68] uppercase block">M-Pesa Code</span>
+                          <strong className="text-[#D94E34]">
+                            {req.mpesaCode || req.paymentReference || 'Not Extracted'}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-[#EAE9E4] border border-[#141413]/12 text-xs font-mono-num text-[#141413]">
+                        <span className="text-[10px] uppercase text-[#6E6D68] block mb-1">
+                          Client Pasted M-Pesa SMS Confirmation:
+                        </span>
+                        <p className="whitespace-pre-wrap break-words">
+                          {req.mpesaMessage || req.paymentReference || 'No M-Pesa SMS pasted.'}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {req.paymentStatus !== 'confirmed' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              confirmServiceRequestPayment(req.id);
+                              setEditingStatus('Payment confirmed');
+                              showToast(
+                                `Payment confirmed for ${req.referenceNumber} (${req.mpesaCode || req.paymentReference}).`
+                              );
+                            }}
+                            className="px-4 py-2 bg-[#1F6F43] hover:bg-[#175734] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider font-semibold flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Confirm M-Pesa Payment</span>
+                          </button>
+                        )}
+                        {req.paymentStatus !== 'failed' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              rejectServiceRequestPayment(req.id);
+                              showToast(`Payment flagged for ${req.referenceNumber}.`);
+                            }}
+                            className="px-4 py-2 border border-[#D94E34] text-[#D94E34] hover:bg-[#D94E34] hover:text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            <span>Flag / Reject Payment</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Status Updater Bar */}
                     <div className="p-4 bg-[#F4F3EF] border-2 border-[#141413] space-y-3">
                       <span className="text-[11px] font-mono-num uppercase tracking-wider text-[#D94E34] font-bold block">

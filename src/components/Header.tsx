@@ -19,6 +19,7 @@ import {
   LanguageCode,
   useSerikali,
 } from '../context/SerikaliContext';
+import { SerikaliBrand } from './SerikaliLogo';
 
 export const Header: React.FC = () => {
   const { route, navigate, setIsSearchOpen } = useStore();
@@ -111,23 +112,11 @@ export const Header: React.FC = () => {
         <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 h-12 sm:h-14 lg:h-16 flex items-center justify-between gap-2">
           {/* ZONE 1: Brand Wordmark with Crest */}
           <div className="flex items-center gap-2 shrink-0">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 32 32"
-              aria-hidden="true"
-              className="w-5 h-5 sm:w-6 sm:h-6 shrink-0"
-            >
-              <rect width="32" height="32" rx="4" fill="#141413" />
-              <path d="M8 10h16v2.5H17.25V23h-2.5V12.5H8V10z" fill="#F4F3EF" />
-              <circle cx="22" cy="20.5" r="2.5" fill="#D94E34" />
-            </svg>
-            <button
+            <SerikaliBrand
+              compact
+              subtitle="One Border Stop Post"
               onClick={() => navigate({ page: 'home' })}
-              className="text-left text-xs sm:text-sm lg:text-base font-semibold tracking-[0.14em] sm:tracking-[0.18em] uppercase text-[#141413] hover:opacity-75 transition-opacity whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-[#141413]"
-            >
-              SERIKALI GUIDE
-            </button>
+            />
           </div>
 
           {/* ZONE 2: Desktop Center Navigation (About, Blogs, Contact) */}
@@ -320,14 +309,13 @@ export const Header: React.FC = () => {
           >
             {/* Drawer Header */}
             <div className="px-5 h-14 sm:h-16 flex items-center justify-between border-b border-[#141413]/10 shrink-0 bg-[#EAE9E4]/60">
-              <button
+              <SerikaliBrand
+                compact
+                subtitle="Civic Protocol"
                 onClick={() =>
                   handleMobileNav(() => navigate({ page: 'home' }))
                 }
-                className="text-sm font-semibold tracking-[0.16em] uppercase text-[#141413]"
-              >
-                SERIKALI GUIDE
-              </button>
+              />
               <button
                 onClick={() => setMobileMenuOpen(false)}
                 aria-label="Close navigation menu"

@@ -14,7 +14,7 @@ import {
   ServiceCategory,
   SubCategoryDetail,
 } from '../data/serikaliData';
-import { blogDbService } from '../services/blogDbService';
+import { blogDbService, setStoredAdminToken } from '../services/blogDbService';
 import {
   subscribeToBlogs,
   saveBlogToFirestore,
@@ -36,6 +36,7 @@ import {
   ServiceRequestSubmission,
   ServiceRequestStatus,
   NewsletterSubscriber,
+  SerikaliPaymentSettings,
 } from '../types/serviceApplication';
 import {
   INITIAL_MANAGED_SERVICES,
@@ -1011,10 +1012,42 @@ const STORAGE_KEYS = {
   MANAGED_SERVICES: 'serikali_guide_managed_services_v1',
   SERVICE_REQUESTS: 'serikali_guide_service_requests_v1',
   NEWSLETTER: 'serikali_guide_newsletter_v1',
+  PAYMENT_SETTINGS: 'serikali_payment_settings_v1',
+  CLIENT_SESSION: 'serikali_client_session_v1',
+  MY_TRACKING_REFS: 'serikali_my_tracking_refs_v1',
   LANG: 'serikali_guide_lang_v2',
   ADMIN_UNLOCKED: 'serikali_guide_admin_unlocked_v2',
   TRANSLATION_CACHE: 'serikali_guide_i18n_cache_v2',
 };
+
+const DEFAULT_PAYMENT_SETTINGS_STATE: SerikaliPaymentSettings = {
+  paybillNumber: '',
+  paybillAccountName: 'SERIKALI GUIDE',
+  paybillAccountReference: 'SERIKALI-GUIDE',
+  donationsTillNumber: '9309020',
+  donationsTillName: 'Serikali Guide Support Till',
+  paymentInstructionsNote:
+    'Pay via Lipa Na M-Pesa Paybill using the Business Paybill and Account Reference above, then paste your M-Pesa confirmation SMS or 10-character transaction code below for admin confirmation.',
+};
+
+function getOrCreateClientSessionId(): string {
+  if (typeof window === 'undefined') return 'server-session';
+  try {
+    const existing = localStorage.getItem(STORAGE_KEYS.CLIENT_SESSION);
+    if (existing) return existing;
+    const created = `cs-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem(STORAGE_KEYS.CLIENT_SESSION, created);
+    return created;
+  } catch {
+    return `cs-${Date.now().toString(36)}`;
+  }
+}
+
+function parseTimestampMs(val?: string): number {
+  if (!val) return 0;
+  const parsed = Date.parse(val);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 // Singleton broadcast channel instance for zero-latency multi-tab sync
 export const getSerikaliBroadcastChannel = (): BroadcastChannel | null => {
@@ -1115,6 +1148,7 @@ interface SerikaliContextValue {
   addServiceCategory: (
     cat: Omit<ServiceCategory, 'id'> & { id?: string }
   ) => ServiceCategory;
+  updateServiceCategory: (id: string, updates: Partial<ServiceCategory>) => void;
   deleteServiceCategory: (id: string) => void;
   addSubCategory: (
     categoryId: string,
@@ -1149,6 +1183,15 @@ interface SerikaliContextValue {
   addDonation: (
     data: Omit<BlogDonation, 'id' | 'reference' | 'ref' | 'createdAt'>
   ) => BlogDonation;
+  confirmDonation: (id: string) => Promise<void>;
+  rejectDonation: (id: string) => Promise<void>;
+  deleteDonation: (id: string) => Promise<void>;
+
+  // Paybill & Donations Till 9309020 Configuration
+  paymentSettings: SerikaliPaymentSettings;
+  updatePaymentSettings: (
+    updates: Partial<SerikaliPaymentSettings>
+  ) => Promise<SerikaliPaymentSettings>;
 
   // Admin-Controlled Services & Pricing ("Get Started" Flow)
   managedServices: ManagedServiceItem[];
@@ -1156,8 +1199,11 @@ interface SerikaliContextValue {
   addManagedService: (service: Partial<ManagedServiceItem>) => ManagedServiceItem;
   deleteManagedService: (id: string) => void;
 
-  // Service Request Submissions & Tracking
+  // Service Request Submissions & Isolated Tracking
   serviceRequests: ServiceRequestSubmission[];
+  myServiceRequests: ServiceRequestSubmission[];
+  myTrackingRefs: string[];
+  clientSessionId: string;
   submitServiceRequest: (
     data: Omit<
       ServiceRequestSubmission,
@@ -1170,7 +1216,12 @@ interface SerikaliContextValue {
     notes?: string,
     nextStep?: string
   ) => void;
+  confirmServiceRequestPayment: (id: string, note?: string) => void;
+  rejectServiceRequestPayment: (id: string, note?: string) => void;
   deleteServiceRequest: (id: string) => void;
+  trackServiceRequestByRef: (
+    referenceNumber: string
+  ) => Promise<ServiceRequestSubmission | null>;
 
   // Newsletter Subscribers & Broadcast Campaigns (Admin)
   newsletterSubscribers: NewsletterSubscriber[];
@@ -1234,6 +1285,19 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     loadJson<BlogPost[]>(STORAGE_KEYS.BLOGS, BLOG_POSTS)
   );
 
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() =>
+    loadJson<boolean>(STORAGE_KEYS.ADMIN_UNLOCKED, false)
+  );
+  const [clientSessionId] = useState<string>(() => getOrCreateClientSessionId());
+  const [myTrackingRefs, setMyTrackingRefs] = useState<string[]>(() =>
+    loadJson<string[]>(STORAGE_KEYS.MY_TRACKING_REFS, [])
+  );
+
+  const [paymentSettings, setPaymentSettings] = useState<SerikaliPaymentSettings>(() => ({
+    ...DEFAULT_PAYMENT_SETTINGS_STATE,
+    ...loadJson<Partial<SerikaliPaymentSettings>>(STORAGE_KEYS.PAYMENT_SETTINGS, {}),
+  }));
+
   const [isBlogsLoading, setIsBlogsLoading] = useState(false);
   const recentlyDeletedRef = useRef<Map<string, number>>(new Map());
   const optimisticBlogsRef = useRef<Map<string, { blog: BlogPost; timestamp: number }>>(new Map());
@@ -1243,12 +1307,36 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const posts = await blogDbService.fetchBlogs('all');
       if (Array.isArray(posts) && posts.length > 0) {
+        const now = Date.now();
         setRawBlogPosts((prev) => {
-          const remoteMap = new Map(posts.map((p) => [p.id, p]));
-          const pending = prev.filter(
-            (p) => !remoteMap.has(p.id) && !recentlyDeletedRef.current.has(p.id)
+          const prevMap = new Map(prev.map((p) => [p.id, p]));
+          const activeRemote = posts.filter((p) => !recentlyDeletedRef.current.has(p.id));
+          const mergedRemote = activeRemote.map((remote) => {
+            const opt = optimisticBlogsRef.current.get(remote.id);
+            if (opt && now - opt.timestamp < 45000) {
+              return opt.blog;
+            }
+            const localPrev = prevMap.get(remote.id);
+            if (
+              localPrev &&
+              parseTimestampMs(localPrev.updatedAt) > parseTimestampMs(remote.updatedAt)
+            ) {
+              return localPrev;
+            }
+            return remote;
+          });
+          const mergedIds = new Set(mergedRemote.map((p) => p.id));
+          const pendingNew = prev.filter(
+            (p) => !mergedIds.has(p.id) && !recentlyDeletedRef.current.has(p.id)
           );
-          return [...pending, ...posts];
+          const merged = [...pendingNew, ...mergedRemote];
+          if (language === 'en') {
+            setLocalizedBlogs(merged);
+          }
+          try {
+            localStorage.setItem(STORAGE_KEYS.BLOGS, JSON.stringify(merged));
+          } catch {}
+          return merged;
         });
       }
     } catch (err) {
@@ -1256,7 +1344,7 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     } finally {
       setIsBlogsLoading(false);
     }
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     reloadBlogs();
@@ -1274,31 +1362,46 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         });
 
-        // Filter out items currently deleted in this session
-        const activeRemote = remoteBlogs.filter((b) => !recentlyDeletedRef.current.has(b.id));
-        const remoteMap = new Map(activeRemote.map((b) => [b.id, b]));
+        setRawBlogPosts((prev) => {
+          const prevMap = new Map(prev.map((b) => [b.id, b]));
+          const activeRemote = remoteBlogs
+            .filter((b) => !recentlyDeletedRef.current.has(b.id))
+            .map((remote) => {
+              // Preserve local optimistic edits even if remote already has the same ID
+              const opt = optimisticBlogsRef.current.get(remote.id);
+              if (opt && now - opt.timestamp < 45000) {
+                return opt.blog;
+              }
+              const localPrev = prevMap.get(remote.id);
+              if (
+                localPrev &&
+                parseTimestampMs(localPrev.updatedAt) > parseTimestampMs(remote.updatedAt)
+              ) {
+                return localPrev;
+              }
+              return remote;
+            });
 
-        // Gather any optimistic items created locally within last 25s not yet received via remote snapshot
-        const pendingOptimistic: BlogPost[] = [];
-        optimisticBlogsRef.current.forEach(({ blog, timestamp }, id) => {
-          if (now - timestamp < 25000) {
-            if (!remoteMap.has(id) && !recentlyDeletedRef.current.has(id)) {
-              pendingOptimistic.push(blog);
+          const activeIds = new Set(activeRemote.map((b) => b.id));
+          const pendingNewOptimistic: BlogPost[] = [];
+          optimisticBlogsRef.current.forEach(({ blog, timestamp }, id) => {
+            if (now - timestamp < 45000) {
+              if (!activeIds.has(id) && !recentlyDeletedRef.current.has(id)) {
+                pendingNewOptimistic.push(blog);
+              }
+            } else {
+              optimisticBlogsRef.current.delete(id);
             }
-          } else {
-            optimisticBlogsRef.current.delete(id);
-          }
+          });
+
+          const merged = [...pendingNewOptimistic, ...activeRemote];
+          setLocalizedBlogs(merged);
+          try {
+            localStorage.setItem(STORAGE_KEYS.BLOGS, JSON.stringify(merged));
+          } catch {}
+          return merged;
         });
-
-        // Instant re-hydration
-        const merged = [...pendingOptimistic, ...activeRemote];
-        setRawBlogPosts(merged);
-        setLocalizedBlogs(merged);
         setIsBlogsLoading(false);
-
-        try {
-          localStorage.setItem(STORAGE_KEYS.BLOGS, JSON.stringify(merged));
-        } catch {}
       }
     });
 
@@ -1343,6 +1446,22 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
           const updated = JSON.parse(e.newValue);
           if (Array.isArray(updated)) {
             setNewsletterSubscribers(updated);
+          }
+        } catch {}
+      }
+      if (e.key === STORAGE_KEYS.PAYMENT_SETTINGS && e.newValue) {
+        try {
+          const updated = JSON.parse(e.newValue);
+          if (updated && typeof updated === 'object') {
+            setPaymentSettings((prev) => ({ ...prev, ...updated }));
+          }
+        } catch {}
+      }
+      if (e.key === STORAGE_KEYS.DONATIONS && e.newValue) {
+        try {
+          const updated = JSON.parse(e.newValue);
+          if (Array.isArray(updated)) {
+            setDonations(updated);
           }
         } catch {}
       }
@@ -1471,28 +1590,110 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch {}
   }, [newsletterSubscribers]);
 
-  // Real-time synchronization listeners across Firestore & BroadcastChannel
   useEffect(() => {
-    const unsubRequests = subscribeToServiceRequests((remoteReqs) => {
-      if (Array.isArray(remoteReqs) && remoteReqs.length > 0) {
+    try {
+      localStorage.setItem(
+        STORAGE_KEYS.MY_TRACKING_REFS,
+        JSON.stringify(myTrackingRefs)
+      );
+    } catch {}
+  }, [myTrackingRefs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEYS.PAYMENT_SETTINGS,
+        JSON.stringify(paymentSettings)
+      );
+    } catch {}
+  }, [paymentSettings]);
+
+  // Fetch public Paybill & Till settings on startup
+  useEffect(() => {
+    blogDbService.fetchPaymentSettings().then((remote) => {
+      if (remote) {
+        setPaymentSettings((prev) => ({
+          ...prev,
+          ...remote,
+          donationsTillNumber: remote.donationsTillNumber || '9309020',
+        }));
+      }
+    });
+  }, []);
+
+  // Load admin-only queues (all requests & donations) strictly when Admin is unlocked
+  useEffect(() => {
+    if (!isAdminUnlocked) {
+      // Isolate non-admin browsers strictly to their own tracking numbers / session
+      setServiceRequests((prev) =>
+        prev.filter(
+          (r) =>
+            r.clientSessionId === clientSessionId ||
+            myTrackingRefs.includes(r.referenceNumber)
+        )
+      );
+      return;
+    }
+
+    blogDbService.fetchAllServiceRequests().then((remoteReqs) => {
+      if (Array.isArray(remoteReqs)) {
         setServiceRequests((prev) => {
           const remoteMap = new Map(remoteReqs.map((r) => [r.id, r]));
           const merged = [...remoteReqs];
           prev.forEach((local) => {
-            if (!remoteMap.has(local.id)) {
-              merged.push(local);
-            }
+            if (!remoteMap.has(local.id)) merged.push(local);
           });
-          try {
-            localStorage.setItem(
-              STORAGE_KEYS.SERVICE_REQUESTS,
-              JSON.stringify(merged)
-            );
-          } catch {}
           return merged;
         });
       }
     });
+
+    blogDbService.fetchDonations().then((remoteDonations) => {
+      if (Array.isArray(remoteDonations)) {
+        setDonations((prev) => {
+          const remoteMap = new Map(remoteDonations.map((d) => [d.id, d]));
+          const merged = [...remoteDonations];
+          prev.forEach((local) => {
+            if (!remoteMap.has(local.id)) merged.push(local);
+          });
+          return merged;
+        });
+      }
+    });
+  }, [isAdminUnlocked, clientSessionId, myTrackingRefs]);
+
+  const myServiceRequests = useMemo(() => {
+    return serviceRequests.filter(
+      (r) =>
+        r.clientSessionId === clientSessionId ||
+        myTrackingRefs.includes(r.referenceNumber)
+    );
+  }, [serviceRequests, clientSessionId, myTrackingRefs]);
+
+  // Real-time synchronization listeners across Firestore & BroadcastChannel
+  useEffect(() => {
+    const unsubRequests = isAdminUnlocked
+      ? subscribeToServiceRequests((remoteReqs) => {
+          if (Array.isArray(remoteReqs) && remoteReqs.length > 0) {
+            setServiceRequests((prev) => {
+              const remoteMap = new Map(remoteReqs.map((r) => [r.id, r]));
+              const merged = [...remoteReqs];
+              prev.forEach((local) => {
+                if (!remoteMap.has(local.id)) {
+                  merged.push(local);
+                }
+              });
+              try {
+                localStorage.setItem(
+                  STORAGE_KEYS.SERVICE_REQUESTS,
+                  JSON.stringify(merged)
+                );
+              } catch {}
+              return merged;
+            });
+          }
+        })
+      : () => {};
 
     const unsubNewsletters = subscribeToNewsletterSubscribers((remoteSubs) => {
       if (Array.isArray(remoteSubs) && remoteSubs.length > 0) {
@@ -1546,10 +1747,17 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
       syncChannel.onmessage = (event) => {
         const { type, data } = event.data || {};
         if (type === 'SERVICE_REQUEST_ADDED' && data) {
-          setServiceRequests((prev) => {
-            if (prev.some((r) => r.id === data.id)) return prev;
-            return [data, ...prev];
-          });
+          // Only ingest directly if admin or owned by this client session / tracking refs
+          if (
+            isAdminUnlocked ||
+            data.clientSessionId === clientSessionId ||
+            myTrackingRefs.includes(data.referenceNumber)
+          ) {
+            setServiceRequests((prev) => {
+              if (prev.some((r) => r.id === data.id)) return prev;
+              return [data, ...prev];
+            });
+          }
         } else if (type === 'SERVICE_REQUEST_UPDATED' && data) {
           setServiceRequests((prev) =>
             prev.map((r) =>
@@ -1572,6 +1780,10 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
         } else if (type === 'BLOGS_SYNC' && Array.isArray(data)) {
           setRawBlogPosts(data);
           setLocalizedBlogs(data);
+        } else if (type === 'PAYMENT_SETTINGS_SYNC' && data) {
+          setPaymentSettings((prev) => ({ ...prev, ...data }));
+        } else if (type === 'DONATIONS_SYNC' && Array.isArray(data)) {
+          setDonations(data);
         }
       };
     }
@@ -1583,7 +1795,7 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
       unsubCategories();
       syncChannel?.close();
     };
-  }, []);
+  }, [isAdminUnlocked, clientSessionId, myTrackingRefs]);
 
   const updateServicePricing = useCallback(
     (id: string, updates: Partial<ManagedServiceItem>) => {
@@ -1693,8 +1905,16 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
         'id' | 'referenceNumber' | 'createdAt' | 'updatedAt' | 'status'
       >
     ): ServiceRequestSubmission => {
-      const randNum = Math.floor(100000 + Math.random() * 900000);
-      const ref = `SG-2026-${randNum}`;
+      // Generate collision-free unique tracking number SG-2026-XXXXXX
+      const usedRefs = new Set([
+        ...serviceRequests.map((r) => r.referenceNumber.toUpperCase()),
+        ...myTrackingRefs.map((ref) => ref.toUpperCase()),
+      ]);
+      let ref = `SG-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+      while (usedRefs.has(ref)) {
+        ref = `SG-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+      }
+
       const nowStr = new Date().toLocaleString('en-US', {
         month: 'short',
         day: 'numeric',
@@ -1707,22 +1927,44 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
         Date.now() + 7 * 24 * 60 * 60 * 1000
       ).toISOString();
 
+      const resolvedStatusNotes =
+        data.paymentStatus === 'confirmed'
+          ? 'Payment verified and application dossier scheduled for review.'
+          : 'Application received. M-Pesa Paybill confirmation code queued for admin verification.';
+
+      const resolvedNextStepNote =
+        data.paymentStatus === 'confirmed'
+          ? 'Our regulatory specialists are reviewing your uploaded documents.'
+          : 'Our admin team is confirming your M-Pesa Paybill transaction and auditing your submitted dossier.';
+
       const newRequest: ServiceRequestSubmission = {
         ...data,
         id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         referenceNumber: ref,
+        clientSessionId: data.clientSessionId || clientSessionId,
+        paymentStatus: data.paymentStatus || 'verifying',
         status: 'Received',
-        statusNotes:
-          'Service request dossier received and scheduled for compliance audit.',
-        nextStepNote:
-          'Our specialized immigration desk will verify your submitted documents and prepare your portal filing.',
-        adminNotes: 'Initial dossier received via Serikali Guide portal.',
-        nextStep: 'Audit client documents against statutory requirements.',
+        statusNotes: resolvedStatusNotes,
+        nextStepNote: resolvedNextStepNote,
+        adminNotes:
+          data.paymentStatus === 'verifying'
+            ? `Awaiting Admin confirmation for M-Pesa Paybill code ${data.mpesaCode || data.paymentReference || 'Pending'}.`
+            : 'Initial dossier received via Serikali Guide portal.',
+        nextStep: 'Confirm M-Pesa Paybill receipt and audit client documents.',
         retentionExpiresAt,
         retentionDaysLeft: 7,
         createdAt: nowStr,
         updatedAt: nowStr,
       };
+
+      setMyTrackingRefs((prev) => {
+        if (prev.includes(newRequest.referenceNumber)) return prev;
+        const nextRefs = [newRequest.referenceNumber, ...prev];
+        try {
+          localStorage.setItem(STORAGE_KEYS.MY_TRACKING_REFS, JSON.stringify(nextRefs));
+        } catch {}
+        return nextRefs;
+      });
 
       setServiceRequests((prev) => {
         const next = [newRequest, ...prev];
@@ -1749,6 +1991,20 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
         })
       );
 
+      // Persist to server API (and update local ref if server reassigned on rare collision)
+      blogDbService.createServiceRequest(newRequest).then((persisted) => {
+        if (persisted && persisted.referenceNumber) {
+          setMyTrackingRefs((prev) =>
+            prev.includes(persisted.referenceNumber)
+              ? prev
+              : [persisted.referenceNumber, ...prev]
+          );
+          setServiceRequests((prev) =>
+            prev.map((r) => (r.id === newRequest.id ? persisted : r))
+          );
+        }
+      });
+
       // Async Firestore write
       saveServiceRequestToFirestore(newRequest).catch((err) => {
         console.warn('Firestore service_request write:', err);
@@ -1756,7 +2012,7 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
 
       return newRequest;
     },
-    []
+    [clientSessionId, serviceRequests, myTrackingRefs]
   );
 
   const updateServiceRequestStatus = useCallback(
@@ -1812,6 +2068,7 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
             })
           );
 
+          blogDbService.updateServiceRequest(updatedReq.id, updatedReq).catch(() => {});
           saveServiceRequestToFirestore(updatedReq).catch((err) => {
             console.warn('Firestore service_request update:', err);
           });
@@ -1822,6 +2079,104 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     []
   );
+
+  const confirmServiceRequestPayment = useCallback((id: string, note?: string) => {
+    const nowStr = new Date().toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const confirmedIso = new Date().toISOString();
+    let updatedReq: ServiceRequestSubmission | null = null;
+
+    setServiceRequests((prev) => {
+      const next = prev.map((req) => {
+        if (req.id === id || req.referenceNumber === id) {
+          const nextStatus: ServiceRequestStatus =
+            req.status === 'Received' ? 'Payment confirmed' : req.status;
+          const item: ServiceRequestSubmission = {
+            ...req,
+            paymentStatus: 'confirmed',
+            paymentConfirmedAt: confirmedIso,
+            paidAt: req.paidAt || nowStr,
+            status: nextStatus,
+            statusNotes:
+              note ||
+              `M-Pesa Paybill payment (${req.mpesaCode || req.paymentReference || 'Verified'}) confirmed by Admin.`,
+            adminNotes:
+              note ||
+              `M-Pesa Paybill confirmed on ${nowStr}. Dossier cleared for statutory filing.`,
+            nextStepNote: 'Our regulatory desk is reviewing your documents and preparing your filing.',
+            updatedAt: nowStr,
+          };
+          updatedReq = item;
+          return item;
+        }
+        return req;
+      });
+
+      try {
+        localStorage.setItem(STORAGE_KEYS.SERVICE_REQUESTS, JSON.stringify(next));
+      } catch {}
+
+      if (updatedReq) {
+        getSerikaliBroadcastChannel()?.postMessage({
+          type: 'SERVICE_REQUEST_UPDATED',
+          data: updatedReq,
+        });
+        blogDbService.updateServiceRequest(updatedReq.id, updatedReq).catch(() => {});
+        saveServiceRequestToFirestore(updatedReq).catch(() => {});
+      }
+      return next;
+    });
+  }, []);
+
+  const rejectServiceRequestPayment = useCallback((id: string, note?: string) => {
+    const nowStr = new Date().toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    let updatedReq: ServiceRequestSubmission | null = null;
+
+    setServiceRequests((prev) => {
+      const next = prev.map((req) => {
+        if (req.id === id || req.referenceNumber === id) {
+          const item: ServiceRequestSubmission = {
+            ...req,
+            paymentStatus: 'failed',
+            statusNotes:
+              note ||
+              'M-Pesa Paybill confirmation code could not be matched. Please contact our desk on WhatsApp with your M-Pesa SMS.',
+            adminNotes: note || 'M-Pesa Paybill transaction flagged/not matched.',
+            nextStepNote: 'Send M-Pesa confirmation screenshot or contact support desk.',
+            updatedAt: nowStr,
+          };
+          updatedReq = item;
+          return item;
+        }
+        return req;
+      });
+
+      try {
+        localStorage.setItem(STORAGE_KEYS.SERVICE_REQUESTS, JSON.stringify(next));
+      } catch {}
+
+      if (updatedReq) {
+        getSerikaliBroadcastChannel()?.postMessage({
+          type: 'SERVICE_REQUEST_UPDATED',
+          data: updatedReq,
+        });
+        blogDbService.updateServiceRequest(updatedReq.id, updatedReq).catch(() => {});
+        saveServiceRequestToFirestore(updatedReq).catch(() => {});
+      }
+      return next;
+    });
+  }, []);
 
   const deleteServiceRequest = useCallback((id: string) => {
     setServiceRequests((prev) => {
@@ -1840,8 +2195,88 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
       return next;
     });
 
+    blogDbService.deleteServiceRequest(id).catch(() => {});
     deleteServiceRequestFromFirestore(id).catch(() => {});
   }, []);
+
+  const trackServiceRequestByRef = useCallback(
+    async (referenceNumber: string): Promise<ServiceRequestSubmission | null> => {
+      const clean = referenceNumber.trim().toUpperCase();
+      if (!clean) return null;
+
+      // 1. Query server exact-match isolated lookup endpoint (works across any device)
+      const remote = await blogDbService.trackServiceRequest(clean);
+      if (remote && remote.referenceNumber) {
+        setMyTrackingRefs((prev) =>
+          prev.includes(remote.referenceNumber) ? prev : [remote.referenceNumber, ...prev]
+        );
+        setServiceRequests((prev) => {
+          const exists = prev.some((r) => r.referenceNumber === remote.referenceNumber);
+          return exists
+            ? prev.map((r) => (r.referenceNumber === remote.referenceNumber ? remote : r))
+            : [remote, ...prev];
+        });
+        return remote;
+      }
+
+      // 2. Local exact reference match fallback
+      const localMatch = serviceRequests.find(
+        (r) =>
+          r.referenceNumber.toUpperCase() === clean ||
+          r.id.toUpperCase() === clean
+      );
+      if (localMatch) {
+        setMyTrackingRefs((prev) =>
+          prev.includes(localMatch.referenceNumber)
+            ? prev
+            : [localMatch.referenceNumber, ...prev]
+        );
+        return localMatch;
+      }
+
+      return null;
+    },
+    [serviceRequests]
+  );
+
+  const updatePaymentSettings = useCallback(
+    async (
+      updates: Partial<SerikaliPaymentSettings>
+    ): Promise<SerikaliPaymentSettings> => {
+      const nextLocal: SerikaliPaymentSettings = {
+        ...paymentSettings,
+        ...updates,
+        donationsTillNumber:
+          updates.donationsTillNumber?.trim() ||
+          paymentSettings.donationsTillNumber ||
+          '9309020',
+        updatedAt: new Date().toISOString(),
+      };
+      setPaymentSettings(nextLocal);
+      try {
+        localStorage.setItem(
+          STORAGE_KEYS.PAYMENT_SETTINGS,
+          JSON.stringify(nextLocal)
+        );
+      } catch {}
+      getSerikaliBroadcastChannel()?.postMessage({
+        type: 'PAYMENT_SETTINGS_SYNC',
+        data: nextLocal,
+      });
+
+      const saved = await blogDbService.savePaymentSettings(nextLocal);
+      if (saved) {
+        setPaymentSettings(saved);
+        getSerikaliBroadcastChannel()?.postMessage({
+          type: 'PAYMENT_SETTINGS_SYNC',
+          data: saved,
+        });
+        return saved;
+      }
+      return nextLocal;
+    },
+    [paymentSettings]
+  );
 
   const addNewsletterSubscriber = useCallback(
     (
@@ -2021,10 +2456,6 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
       return { sentCount, timestamp: nowStr };
     },
     []
-  );
-
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() =>
-    loadJson<boolean>(STORAGE_KEYS.ADMIN_UNLOCKED, false)
   );
 
   const [seoOverrides, setSeoOverrides] = useState<
@@ -2447,6 +2878,7 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
   const unlockAdmin = (passcode: string): boolean => {
     if (passcode.trim() === '1940') {
       setIsAdminUnlocked(true);
+      setStoredAdminToken('SG-ADMIN-AUTH-1940');
       try {
         localStorage.setItem(STORAGE_KEYS.ADMIN_UNLOCKED, JSON.stringify(true));
       } catch {}
@@ -2498,6 +2930,30 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     setLocalizedCategories((prev) => [...prev, created]);
     saveServiceCategoryToFirestore(created).catch(() => {});
     return created;
+  };
+
+  const updateServiceCategory = (
+    id: string,
+    updates: Partial<ServiceCategory>
+  ) => {
+    const updater = (prev: ServiceCategory[]) =>
+      prev.map((c) => (c.id === id ? { ...c, ...updates } : c));
+    setRawServiceCategories((prev) => {
+      const next = updater(prev);
+      try {
+        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(next));
+      } catch {}
+      getSerikaliBroadcastChannel()?.postMessage({
+        type: 'CATEGORIES_SYNC',
+        data: next,
+      });
+      const updated = next.find((c) => c.id === id);
+      if (updated) {
+        saveServiceCategoryToFirestore(updated).catch(() => {});
+      }
+      return next;
+    });
+    setLocalizedCategories(updater);
   };
 
   const deleteServiceCategory = (id: string) => {
@@ -2644,9 +3100,20 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     // Save to persistent database & Firestore in parallel
     saveBlogToFirestore(created).catch(() => {});
     blogDbService.createBlog(created).then((persisted) => {
-      optimisticBlogsRef.current.delete(created.id);
-      setRawBlogPosts((prev) => prev.map((b) => (b.id === created.id ? persisted : b)));
+      optimisticBlogsRef.current.set(created.id, { blog: persisted, timestamp: Date.now() });
+      setRawBlogPosts((prev) => {
+        const next = prev.map((b) => (b.id === created.id ? persisted : b));
+        try {
+          localStorage.setItem(STORAGE_KEYS.BLOGS, JSON.stringify(next));
+        } catch {}
+        getSerikaliBroadcastChannel()?.postMessage({
+          type: 'BLOGS_SYNC',
+          data: next,
+        });
+        return next;
+      });
       setLocalizedBlogs((prev) => prev.map((b) => (b.id === created.id ? persisted : b)));
+      saveBlogToFirestore(persisted).catch(() => {});
     }).catch((err) => {
       console.warn('Optimistic blog created; background server sync error:', err);
     });
@@ -2685,16 +3152,21 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     saveBlogToFirestore(updatedOptimistic).catch(() => {});
 
     try {
-      const persisted = await blogDbService.updateBlog(id, postData);
-      optimisticBlogsRef.current.delete(id);
+      const persisted = await blogDbService.updateBlog(id, updatedOptimistic);
+      optimisticBlogsRef.current.set(id, { blog: persisted, timestamp: Date.now() });
       setRawBlogPosts((prev) => {
         const next = prev.map((b) => (b.id === id ? persisted : b));
         try {
           localStorage.setItem(STORAGE_KEYS.BLOGS, JSON.stringify(next));
         } catch {}
+        getSerikaliBroadcastChannel()?.postMessage({
+          type: 'BLOGS_SYNC',
+          data: next,
+        });
         return next;
       });
       setLocalizedBlogs((prev) => prev.map((b) => (b.id === id ? persisted : b)));
+      saveBlogToFirestore(persisted).catch(() => {});
       return persisted;
     } catch (err) {
       console.warn('Optimistic blog updated; server sync failed:', err);
@@ -2801,7 +3273,7 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
     setInquiries((prev) => prev.filter((inq) => inq.id !== id));
   };
 
-  // Donations CRUD
+  // Donations CRUD (M-Pesa Buy Goods Till 9309020 + Admin Verification)
   const addDonation = (
     data: Omit<BlogDonation, 'id' | 'reference' | 'ref' | 'createdAt'>
   ): BlogDonation => {
@@ -2813,15 +3285,98 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
       hour: '2-digit',
       minute: '2-digit',
     });
+    const tillNum = data.tillNumber || paymentSettings.donationsTillNumber || '9309020';
     const created: BlogDonation = {
       ...data,
       id: `don-${Date.now()}`,
       reference: ref,
       ref,
+      tillNumber: tillNum,
+      method: data.method || `M-Pesa Buy Goods Till ${tillNum}`,
+      paymentStatus: data.paymentStatus || 'verifying',
       createdAt: nowStr,
     };
-    setDonations((prev) => [created, ...prev]);
+
+    setDonations((prev) => {
+      const next = [created, ...prev];
+      try {
+        localStorage.setItem(STORAGE_KEYS.DONATIONS, JSON.stringify(next));
+      } catch {}
+      getSerikaliBroadcastChannel()?.postMessage({
+        type: 'DONATIONS_SYNC',
+        data: next,
+      });
+      return next;
+    });
+
+    blogDbService.createDonation(created).then((persisted) => {
+      if (persisted && persisted.id) {
+        setDonations((prev) => {
+          const next = prev.map((d) => (d.id === created.id ? persisted : d));
+          getSerikaliBroadcastChannel()?.postMessage({
+            type: 'DONATIONS_SYNC',
+            data: next,
+          });
+          return next;
+        });
+      }
+    });
+
     return created;
+  };
+
+  const confirmDonation = async (id: string) => {
+    const confirmedAt = new Date().toISOString();
+    setDonations((prev) => {
+      const next = prev.map((d) =>
+        d.id === id || d.reference === id
+          ? { ...d, paymentStatus: 'confirmed' as const, confirmedAt }
+          : d
+      );
+      try {
+        localStorage.setItem(STORAGE_KEYS.DONATIONS, JSON.stringify(next));
+      } catch {}
+      getSerikaliBroadcastChannel()?.postMessage({
+        type: 'DONATIONS_SYNC',
+        data: next,
+      });
+      return next;
+    });
+    await blogDbService.updateDonationStatus(id, 'confirmed');
+  };
+
+  const rejectDonation = async (id: string) => {
+    setDonations((prev) => {
+      const next = prev.map((d) =>
+        d.id === id || d.reference === id
+          ? { ...d, paymentStatus: 'rejected' as const }
+          : d
+      );
+      try {
+        localStorage.setItem(STORAGE_KEYS.DONATIONS, JSON.stringify(next));
+      } catch {}
+      getSerikaliBroadcastChannel()?.postMessage({
+        type: 'DONATIONS_SYNC',
+        data: next,
+      });
+      return next;
+    });
+    await blogDbService.updateDonationStatus(id, 'rejected');
+  };
+
+  const deleteDonation = async (id: string) => {
+    setDonations((prev) => {
+      const next = prev.filter((d) => d.id !== id && d.reference !== id);
+      try {
+        localStorage.setItem(STORAGE_KEYS.DONATIONS, JSON.stringify(next));
+      } catch {}
+      getSerikaliBroadcastChannel()?.postMessage({
+        type: 'DONATIONS_SYNC',
+        data: next,
+      });
+      return next;
+    });
+    await blogDbService.deleteDonation(id);
   };
 
   const resetAllToDefaults = () => {
@@ -3107,6 +3662,7 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
         unlockAdmin,
         lockAdmin,
         addServiceCategory,
+        updateServiceCategory,
         deleteServiceCategory,
         addSubCategory,
         deleteSubCategory,
@@ -3123,14 +3679,25 @@ export const SerikaliProvider: React.FC<{ children: React.ReactNode }> = ({
         updateInquiryStatus,
         deleteInquiry,
         addDonation,
+        confirmDonation,
+        rejectDonation,
+        deleteDonation,
+        paymentSettings,
+        updatePaymentSettings,
         managedServices,
         updateServicePricing,
         addManagedService,
         deleteManagedService,
         serviceRequests,
+        myServiceRequests,
+        myTrackingRefs,
+        clientSessionId,
         submitServiceRequest,
         updateServiceRequestStatus,
+        confirmServiceRequestPayment,
+        rejectServiceRequestPayment,
         deleteServiceRequest,
+        trackServiceRequestByRef,
         newsletterSubscribers,
         addNewsletterSubscriber,
         removeNewsletterSubscriber,

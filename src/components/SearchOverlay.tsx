@@ -568,7 +568,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
                         )}
                         {activeAiSolution.isAiEnhanced && (
                           <span className="text-[10px] font-mono-num uppercase tracking-wider text-[#1F6F43] bg-[#1F6F43]/10 px-2 py-0.5 border border-[#1F6F43]/20 font-medium">
-                            Gemini 3.8 Flash Verified
+                            Gemini AI · Nov 2026 Verified
                           </span>
                         )}
                       </div>

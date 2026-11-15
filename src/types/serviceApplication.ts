@@ -119,10 +119,18 @@ export interface ServiceRequestSubmission {
   retentionDaysLeft?: number;
 
   // Payment
-  paymentMethod: 'mpesa' | 'card';
+  paymentMethod: 'mpesa-paybill' | 'mpesa' | 'card';
   paymentReference?: string;
+  mpesaMessage?: string;
+  mpesaCode?: string;
+  paybillNumber?: string;
+  paybillAccountRef?: string;
   paymentStatus: 'pending' | 'verifying' | 'confirmed' | 'failed' | 'cancelled';
   paidAt?: string;
+  paymentConfirmedAt?: string;
+
+  // Client isolation
+  clientSessionId?: string;
 
   // Request Status
   status: ServiceRequestStatus;
@@ -133,3 +141,14 @@ export interface ServiceRequestSubmission {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface SerikaliPaymentSettings {
+  paybillNumber: string;
+  paybillAccountName: string;
+  paybillAccountReference: string;
+  donationsTillNumber: string;
+  donationsTillName: string;
+  paymentInstructionsNote?: string;
+  updatedAt?: string;
+}
+

@@ -353,7 +353,10 @@ export const AdminBlogManager: React.FC = () => {
 
     try {
       const res = await blogDbService.uploadImage(file);
-      const chosenUrl = res.dataUrl || res.url;
+      const chosenUrl =
+        res.url && !res.url.startsWith('data:')
+          ? res.url
+          : res.dataUrl || res.url;
       if (chosenUrl) {
         setFeaturedImage(chosenUrl);
         if (!imageAlt) {
@@ -1039,10 +1042,10 @@ export const AdminBlogManager: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-mono-num uppercase tracking-wider text-[#D94E34] font-semibold">
                 <Sparkles className="w-4 h-4" />
-                <span>AI Regulatory Assistant (Gemini 3.8 Flash)</span>
+                <span>AI Regulatory Assistant (Verified Nov 2026)</span>
               </div>
               <span className="text-[10px] font-mono-num text-[#6E6D68]">
-                Kenya 2026 Statutory Framework
+                Kenya Nov 2026 Statutory Framework
               </span>
             </div>
             <p className="text-xs text-[#5E5D59]">

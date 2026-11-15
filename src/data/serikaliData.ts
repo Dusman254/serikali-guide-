@@ -2076,6 +2076,11 @@ export interface BlogDonation {
   donorContact?: string;
   amount: number;
   method: string;
+  tillNumber?: string;
+  mpesaMessage?: string;
+  mpesaCode?: string;
+  paymentStatus?: 'pending' | 'verifying' | 'confirmed' | 'rejected';
+  confirmedAt?: string;
   blogTitle: string;
   note?: string;
   createdAt: string;

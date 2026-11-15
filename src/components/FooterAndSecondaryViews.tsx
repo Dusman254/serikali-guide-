@@ -12,6 +12,7 @@ import {
 import { useStore } from '../context/StoreContext';
 import { useSerikali } from '../context/SerikaliContext';
 import { ProductCard } from './ProductCard';
+import { SerikaliBrand } from './SerikaliLogo';
 
 export const WishlistView: React.FC = () => {
   const { products, wishlist, navigate } = useStore();
@@ -200,28 +201,10 @@ export const Footer: React.FC = () => {
         {/* TOP ROW: Brand Identity + Newsletter Subscription */}
         <div className="pb-8 border-b border-[#141413]/10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2.5">
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 32 32"
-                aria-hidden="true"
-                className="w-7 h-7 shrink-0"
-              >
-                <rect width="32" height="32" rx="4" fill="#141413" />
-                <path
-                  d="M8 10h16v2.5H17.25V23h-2.5V12.5H8V10z"
-                  fill="#F4F3EF"
-                />
-                <circle cx="22" cy="20.5" r="2.5" fill="#D94E34" />
-              </svg>
-              <button
-                onClick={() => navigate({ page: 'home' })}
-                className="text-base sm:text-lg font-semibold tracking-[0.18em] uppercase text-[#141413] cursor-pointer"
-              >
-                SERIKALI GUIDE
-              </button>
-            </div>
+            <SerikaliBrand
+              subtitle="One Border Stop Post"
+              onClick={() => navigate({ page: 'home' })}
+            />
             <p className="text-xs text-[#5E5D59] max-w-md">
               Your one border stop post. Independent immigration, business
               registration, NGO compliance, KRA tax &amp; government services

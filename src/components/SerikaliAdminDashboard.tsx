@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   ArrowUpRight,
   BookOpen,
   Calendar,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -14,6 +15,7 @@ import {
   FolderPlus,
   Globe,
   Heart,
+  Image as ImageIcon,
   Landmark,
   Layers,
   LayoutDashboard,
@@ -25,13 +27,17 @@ import {
   Phone,
   Plus,
   RefreshCw,
+  Save,
   Search,
   ShieldAlert,
   Sparkles,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useSerikali } from '../context/SerikaliContext';
+import { blogDbService } from '../services/blogDbService';
+import { SerikaliLogoMark } from './SerikaliLogo';
 import {
   ConsultationStatus,
   InquiryStatus,
@@ -67,6 +73,11 @@ export const SerikaliAdminDashboard: React.FC = () => {
     managedServices,
     serviceRequests,
     newsletterSubscribers,
+    paymentSettings,
+    updatePaymentSettings,
+    confirmDonation,
+    rejectDonation,
+    deleteDonation,
     isAdminUnlocked,
     unlockAdmin,
     lockAdmin,
@@ -74,6 +85,7 @@ export const SerikaliAdminDashboard: React.FC = () => {
     deleteBlogPost,
     reloadBlogs,
     addServiceCategory,
+    updateServiceCategory,
     deleteServiceCategory,
     addSubCategory,
     deleteSubCategory,
@@ -143,6 +155,38 @@ export const SerikaliAdminDashboard: React.FC = () => {
   const [catFirstSubFee, setCatFirstSubFee] = useState(
     'Official Gazette Statutory Fee'
   );
+  const [catHeroImage, setCatHeroImage] = useState('');
+  const [isUploadingCatImage, setIsUploadingCatImage] = useState(false);
+
+  // --- PAYBILL & DONATIONS TILL 9309020 SETTINGS FORM STATE ---
+  const [paybillNumberInput, setPaybillNumberInput] = useState(
+    paymentSettings.paybillNumber || ''
+  );
+  const [paybillNameInput, setPaybillNameInput] = useState(
+    paymentSettings.paybillAccountName || 'Serikali Guide Services'
+  );
+  const [paybillRefInput, setPaybillRefInput] = useState(
+    paymentSettings.paybillAccountReference || 'Your Full Name / Ref'
+  );
+  const [donationsTillInput, setDonationsTillInput] = useState(
+    paymentSettings.donationsTillNumber || '9309020'
+  );
+  const [donationsTillNameInput, setDonationsTillNameInput] = useState(
+    paymentSettings.donationsTillName || 'Serikali Guide'
+  );
+  const [paymentInstructionsInput, setPaymentInstructionsInput] = useState(
+    paymentSettings.paymentInstructionsNote || ''
+  );
+  const [isSavingPaySettings, setIsSavingPaySettings] = useState(false);
+
+  useEffect(() => {
+    setPaybillNumberInput(paymentSettings.paybillNumber || '');
+    setPaybillNameInput(paymentSettings.paybillAccountName || 'Serikali Guide Services');
+    setPaybillRefInput(paymentSettings.paybillAccountReference || 'Your Full Name / Ref');
+    setDonationsTillInput(paymentSettings.donationsTillNumber || '9309020');
+    setDonationsTillNameInput(paymentSettings.donationsTillName || 'Serikali Guide');
+    setPaymentInstructionsInput(paymentSettings.paymentInstructionsNote || '');
+  }, [paymentSettings]);
 
   // --- NEW SUB-CATEGORY / SERVICE FORM STATE ---
   const [targetParentCatId, setTargetParentCatId] = useState(
@@ -178,7 +222,7 @@ export const SerikaliAdminDashboard: React.FC = () => {
   const [aiServiceTopic, setAiServiceTopic] = useState('');
   const [isAiGeneratingService, setIsAiGeneratingService] = useState(false);
 
-  // Handle AI Blog Generation (Gemini 3.8 Flash)
+  // Handle AI Blog Generation (Grounded Nov 2026)
   const handleAiGenerateBlog = async () => {
     if (!aiBlogTopic.trim()) {
       showToast('Please enter a topic for the AI to analyze.');
@@ -230,7 +274,7 @@ export const SerikaliAdminDashboard: React.FC = () => {
     }
   };
 
-  // Handle AI Service Pillar Generation (Gemini 3.8 Flash)
+  // Handle AI Service Pillar Generation (Grounded Nov 2026)
   const handleAiGenerateService = async () => {
     if (!aiServiceTopic.trim()) {
       showToast('Please enter a service or regulatory topic for the AI.');
@@ -416,7 +460,7 @@ export const SerikaliAdminDashboard: React.FC = () => {
         'Statutory filings, permits & compliance',
       editorialHeadline: `${catName.trim()} — Official Kenyan Procedures & Requirements.`,
       overview: catOverview.trim(),
-      heroImage: SERVICE_CATEGORIES[0].heroImage,
+      heroImage: catHeroImage || SERVICE_CATEGORIES[0].heroImage,
       subCategories: [
         {
           id: firstSubId,
@@ -449,7 +493,58 @@ export const SerikaliAdminDashboard: React.FC = () => {
     setCatOverview('');
     setCatFirstSubName('');
     setCatFirstSubSummary('');
+    setCatHeroImage('');
     showToast(`Service Category "${created.name}" added to the Hanger Rail!`);
+  };
+
+  // Upload hero image for a new or existing Service Category
+  const handleCategoryPhotoUpload = async (
+    file: File,
+    targetCategoryId?: string
+  ) => {
+    if (!file.type.startsWith('image/')) {
+      showToast('Only PNG, JPG, or WebP images are supported.');
+      return;
+    }
+    setIsUploadingCatImage(true);
+    try {
+      const res = await blogDbService.uploadImage(file);
+      const chosenUrl =
+        res.url && !res.url.startsWith('data:')
+          ? res.url
+          : res.dataUrl || res.url;
+      if (chosenUrl) {
+        if (targetCategoryId) {
+          updateServiceCategory(targetCategoryId, { heroImage: chosenUrl });
+          showToast('Category photo updated and published live!');
+        } else {
+          setCatHeroImage(chosenUrl);
+          showToast('Category hero photo uploaded.');
+        }
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Photo upload notice.');
+    } finally {
+      setIsUploadingCatImage(false);
+    }
+  };
+
+  const handleSavePaymentSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingPaySettings(true);
+    try {
+      await updatePaymentSettings({
+        paybillNumber: paybillNumberInput.trim(),
+        paybillAccountName: paybillNameInput.trim() || 'Serikali Guide Services',
+        paybillAccountReference: paybillRefInput.trim() || 'Your Full Name / Ref',
+        donationsTillNumber: donationsTillInput.trim() || '9309020',
+        donationsTillName: donationsTillNameInput.trim() || 'Serikali Guide',
+        paymentInstructionsNote: paymentInstructionsInput.trim(),
+      });
+      showToast('Paybill & Donations Till 9309020 settings saved live!');
+    } finally {
+      setIsSavingPaySettings(false);
+    }
   };
 
   // Handle Create Sub-Category
@@ -511,9 +606,7 @@ export const SerikaliAdminDashboard: React.FC = () => {
         <div className="w-full max-w-md bg-[#EAE9E4] border border-[#141413]/20 p-7 sm:p-9 shadow-[0_24px_48px_rgba(20,20,19,0.08)]">
           <div className="flex items-center justify-between pb-4 mb-6 border-b border-[#141413]/12">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-[#141413] text-[#F4F3EF] flex items-center justify-center">
-                <Lock className="w-4 h-4 text-[#D94E34]" />
-              </div>
+              <SerikaliLogoMark size={36} className="shrink-0" />
               <div>
                 <p className="text-[10px] font-mono-num uppercase tracking-[0.2em] text-[#6E6D68]">
                   RESTRICTED PORTAL
@@ -684,9 +777,7 @@ export const SerikaliAdminDashboard: React.FC = () => {
           <div className="h-16 px-4 border-b border-[#F4F3EF]/12 flex items-center justify-between gap-2">
             {!isSidebarCollapsed && (
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 bg-[#D94E34] text-[#F4F3EF] flex items-center justify-center font-editorial font-bold text-base shrink-0">
-                  S
-                </div>
+                <SerikaliLogoMark size={30} variant="inverted" className="shrink-0" />
                 <div className="truncate">
                   <p className="font-mono-num text-xs font-semibold tracking-[0.16em] uppercase text-[#F4F3EF] truncate">
                     SERIKALI ADMIN
@@ -1217,6 +1308,39 @@ export const SerikaliAdminDashboard: React.FC = () => {
                 />
               </div>
 
+              <div className="pt-2 border-t border-[#141413]/10 space-y-2">
+                <label className="block text-xs font-mono-num uppercase tracking-wider text-[#141413]">
+                  Category Cover Photo
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-12 bg-[#F4F3EF] border border-[#141413]/20 overflow-hidden shrink-0 flex items-center justify-center">
+                    {catHeroImage ? (
+                      <img src={catHeroImage} alt="Category cover" className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="w-4 h-4 text-[#6E6D68]" />
+                    )}
+                  </div>
+                  <label className="px-3 py-2 bg-[#141413] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider flex items-center gap-1.5 cursor-pointer hover:bg-[#2B2B28]">
+                    {isUploadingCatImage ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5 text-[#D94E34]" />
+                    )}
+                    <span>{catHeroImage ? 'Change Photo' : 'Upload Photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleCategoryPhotoUpload(file);
+                        e.target.value = '';
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 className="w-full py-3 bg-[#141413] hover:bg-[#2B2B28] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-[0.16em] cursor-pointer"
@@ -1236,21 +1360,44 @@ export const SerikaliAdminDashboard: React.FC = () => {
                     key={cat.id}
                     className="p-5 bg-[#EAE9E4]/55 border border-[#141413]/12 flex flex-col justify-between gap-4"
                   >
-                    <div>
-                      <div className="flex items-center justify-between text-xs font-mono-num text-[#D94E34]">
-                        <span>
-                          0{idx + 1} · {cat.agencyBadge}
-                        </span>
-                        <span className="text-[#141413]">
-                          {cat.subCategories.length} Sub-Categories
-                        </span>
+                    <div className="space-y-3">
+                      <div className="relative h-28 bg-[#F4F3EF] border border-[#141413]/12 overflow-hidden">
+                        <img
+                          src={cat.heroImage}
+                          alt={cat.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <label className="absolute bottom-2 right-2 px-2.5 py-1 bg-[#141413]/90 hover:bg-[#D94E34] text-[#F4F3EF] text-[10px] font-mono-num uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors">
+                          <Upload className="w-3 h-3" />
+                          <span>Update Photo</span>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleCategoryPhotoUpload(file, cat.id);
+                              e.target.value = '';
+                            }}
+                            className="hidden"
+                          />
+                        </label>
                       </div>
-                      <h3 className="font-editorial text-2xl text-[#141413] mt-1">
-                        {cat.name}
-                      </h3>
-                      <p className="text-xs text-[#5E5D59] mt-1 line-clamp-2">
-                        {cat.overview}
-                      </p>
+                      <div>
+                        <div className="flex items-center justify-between text-xs font-mono-num text-[#D94E34]">
+                          <span>
+                            0{idx + 1} · {cat.agencyBadge}
+                          </span>
+                          <span className="text-[#141413]">
+                            {cat.subCategories.length} Sub-Categories
+                          </span>
+                        </div>
+                        <h3 className="font-editorial text-2xl text-[#141413] mt-1">
+                          {cat.name}
+                        </h3>
+                        <p className="text-xs text-[#5E5D59] mt-1 line-clamp-2">
+                          {cat.overview}
+                        </p>
+                      </div>
                     </div>
 
                     <div className="pt-3 border-t border-[#141413]/10 flex items-center justify-between gap-2">
@@ -1751,19 +1898,148 @@ export const SerikaliAdminDashboard: React.FC = () => {
         )}
 
         {/* ===================================================================
-            TAB 7: READER DONATIONS & PORTAL SETTINGS
+            TAB 7: PAYBILL, DONATIONS TILL 9309020 & PORTAL SETTINGS
            =================================================================== */}
         {activeSection === 'donations' && (
           <div className="space-y-8">
+            {/* Paybill & Donations Till Configuration Form */}
+            <form
+              onSubmit={handleSavePaymentSettings}
+              className="bg-[#F4F3EF] border-2 border-[#141413] p-6 space-y-5"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#141413]/12 pb-3">
+                <div>
+                  <p className="text-[11px] font-mono-num uppercase tracking-[0.18em] text-[#D94E34] font-semibold">
+                    LIVE M-PESA PAYMENT CHANNELS
+                  </p>
+                  <h2 className="font-editorial text-2xl text-[#141413]">
+                    Service Paybill &amp; Reader Donations Till (9309020)
+                  </h2>
+                </div>
+                <span className="px-2.5 py-1 bg-[#1F6F43]/10 border border-[#1F6F43]/30 text-[#1F6F43] text-[10px] font-mono-num font-bold uppercase">
+                  Active Manual SMS Verification
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-mono-num uppercase text-[#141413] font-semibold mb-1">
+                    Client Services Paybill Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={paybillNumberInput}
+                    onChange={(e) => setPaybillNumberInput(e.target.value)}
+                    placeholder="Enter your M-Pesa Paybill No."
+                    className="w-full px-3 py-2 bg-[#EAE9E4] border border-[#141413]/25 text-xs font-mono-num text-[#141413] focus:outline-none focus:border-[#141413]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono-num uppercase text-[#141413] font-semibold mb-1">
+                    Paybill Account / Business Name
+                  </label>
+                  <input
+                    type="text"
+                    value={paybillNameInput}
+                    onChange={(e) => setPaybillNameInput(e.target.value)}
+                    placeholder="e.g. Serikali Guide Advisory"
+                    className="w-full px-3 py-2 bg-[#EAE9E4] border border-[#141413]/25 text-xs text-[#141413] focus:outline-none focus:border-[#141413]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono-num uppercase text-[#141413] font-semibold mb-1">
+                    Account Reference Prompt
+                  </label>
+                  <input
+                    type="text"
+                    value={paybillRefInput}
+                    onChange={(e) => setPaybillRefInput(e.target.value)}
+                    placeholder="e.g. Your Full Name or Phone"
+                    className="w-full px-3 py-2 bg-[#EAE9E4] border border-[#141413]/25 text-xs text-[#141413] focus:outline-none focus:border-[#141413]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-mono-num uppercase text-[#141413] font-semibold mb-1">
+                    Donations Buy Goods Till Number
+                  </label>
+                  <input
+                    type="text"
+                    value={donationsTillInput}
+                    onChange={(e) => setDonationsTillInput(e.target.value)}
+                    placeholder="9309020"
+                    className="w-full px-3 py-2 bg-[#EAE9E4] border border-[#141413]/25 text-xs font-mono-num font-bold text-[#141413]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono-num uppercase text-[#141413] font-semibold mb-1">
+                    Donations Till Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={donationsTillNameInput}
+                    onChange={(e) => setDonationsTillNameInput(e.target.value)}
+                    placeholder="Serikali Guide"
+                    className="w-full px-3 py-2 bg-[#EAE9E4] border border-[#141413]/25 text-xs text-[#141413]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono-num uppercase text-[#141413] font-semibold mb-1">
+                    Checkout Instructions Note
+                  </label>
+                  <input
+                    type="text"
+                    value={paymentInstructionsInput}
+                    onChange={(e) => setPaymentInstructionsInput(e.target.value)}
+                    placeholder="Instructions displayed at Paybill checkout..."
+                    className="w-full px-3 py-2 bg-[#EAE9E4] border border-[#141413]/25 text-xs text-[#141413]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#141413]/10">
+                <span className="text-[11px] text-[#5E5D59]">
+                  {paybillNumberInput.trim()
+                    ? `Live Checkout Paybill: ${paybillNumberInput.trim()} · Donations Till: ${donationsTillInput || '9309020'}`
+                    : `Note: Enter your Business Paybill number above so clients see it during Service Checkout. Donations Till is set to ${donationsTillInput || '9309020'}.`}
+                </span>
+                <button
+                  type="submit"
+                  disabled={isSavingPaySettings}
+                  className="px-5 py-2.5 bg-[#141413] hover:bg-[#2B2B28] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5 text-[#D94E34]" />
+                  <span>{isSavingPaySettings ? 'Saving...' : 'Save Payment Settings'}</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Summary KPI Banner */}
             <div className="bg-[#EAE9E4]/60 border border-[#141413]/14 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-mono-num uppercase tracking-wider text-[#D94E34]">
-                  READER CONTRIBUTIONS LEDGER
+                  READER CONTRIBUTIONS · BUY GOODS TILL {paymentSettings.donationsTillNumber || '9309020'}
                 </p>
                 <h2 className="font-editorial text-3xl text-[#141413]">
-                  Total Reader Donations: KSh{' '}
+                  Total Recorded Donations: KSh{' '}
                   {totalDonationsKsh.toLocaleString()}
                 </h2>
+                <p className="text-xs text-[#5E5D59] mt-1">
+                  Confirmed:{' '}
+                  <strong className="font-mono-num text-[#1F6F43]">
+                    KSh{' '}
+                    {donations
+                      .filter((d) => d.paymentStatus === 'confirmed')
+                      .reduce((sum, d) => sum + d.amount, 0)
+                      .toLocaleString()}
+                  </strong>{' '}
+                  · Awaiting Verification:{' '}
+                  <strong className="font-mono-num text-[#D94E34]">
+                    {donations.filter((d) => d.paymentStatus === 'verifying' || !d.paymentStatus).length}
+                  </strong>
+                </p>
               </div>
               <button
                 type="button"
@@ -1779,36 +2055,107 @@ export const SerikaliAdminDashboard: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {donations.map((don) => (
-                <div
-                  key={don.id}
-                  className="p-4 bg-[#F4F3EF] border border-[#141413]/12 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 text-xs font-mono-num text-[#6E6D68]">
-                      <span className="text-[#141413] font-semibold">
-                        {don.reference}
-                      </span>
-                      <span>·</span>
-                      <span className="text-[#1F6F43] font-semibold">
-                        {don.method}
-                      </span>
-                      <span>·</span>
-                      <span>{don.createdAt}</span>
-                    </div>
-                    <p className="text-sm font-semibold text-[#141413] mt-0.5">
-                      {don.donorName} ({don.contact}) —{' '}
-                      <span className="text-[#D94E34] font-mono-num">
-                        KSh {don.amount.toLocaleString()}
-                      </span>
-                    </p>
-                    <p className="text-xs text-[#5E5D59]">
-                      Article: {don.blogTitle}{' '}
-                      {don.note ? `· Note: "${don.note}"` : ''}
-                    </p>
-                  </div>
+              {donations.length === 0 ? (
+                <div className="p-8 text-center bg-[#EAE9E4]/40 border border-[#141413]/12 text-xs font-mono-num text-[#6E6D68]">
+                  No reader donations recorded yet.
                 </div>
-              ))}
+              ) : (
+                donations.map((don) => {
+                  const pStatus = don.paymentStatus || 'verifying';
+                  return (
+                    <div
+                      key={don.id}
+                      className="p-5 bg-[#F4F3EF] border border-[#141413]/15 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+                    >
+                      <div className="space-y-1.5 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 text-xs font-mono-num text-[#6E6D68]">
+                          <span className="px-2 py-0.5 bg-[#141413] text-[#F4F3EF] font-semibold">
+                            {don.reference || don.ref}
+                          </span>
+                          <span className="text-[#1F6F43] font-semibold">
+                            Till {don.tillNumber || '9309020'}
+                          </span>
+                          {don.mpesaCode && (
+                            <span className="px-2 py-0.5 bg-[#EAE9E4] border border-[#141413]/20 text-[#141413] font-bold">
+                              M-Pesa Code: {don.mpesaCode}
+                            </span>
+                          )}
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-bold uppercase ${
+                              pStatus === 'confirmed'
+                                ? 'bg-[#1F6F43]/15 text-[#1F6F43]'
+                                : pStatus === 'rejected'
+                                ? 'bg-[#D94E34]/15 text-[#D94E34]'
+                                : 'bg-[#B45309]/15 text-[#B45309]'
+                            }`}
+                          >
+                            {pStatus === 'confirmed'
+                              ? 'Confirmed'
+                              : pStatus === 'rejected'
+                              ? 'Rejected'
+                              : 'Pending Admin Verification'}
+                          </span>
+                          <span>· {don.createdAt}</span>
+                        </div>
+                        <p className="text-sm font-semibold text-[#141413]">
+                          {don.donorName} ({don.contact}) —{' '}
+                          <span className="text-[#D94E34] font-mono-num">
+                            KSh {don.amount.toLocaleString()}
+                          </span>
+                        </p>
+                        {don.mpesaMessage && (
+                          <p className="text-xs font-mono-num bg-[#EAE9E4]/70 border border-[#141413]/10 p-2.5 text-[#141413]">
+                            <strong>Pasted M-Pesa SMS:</strong> {don.mpesaMessage}
+                          </p>
+                        )}
+                        <p className="text-xs text-[#5E5D59]">
+                          Article: {don.blogTitle}{' '}
+                          {don.note ? `· Note: "${don.note}"` : ''}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {pStatus !== 'confirmed' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              confirmDonation(don.id);
+                              showToast(`Donation ${don.reference || don.id} confirmed!`);
+                            }}
+                            className="px-3.5 py-2 bg-[#1F6F43] hover:bg-[#175734] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Confirm Till 9309020</span>
+                          </button>
+                        )}
+                        {pStatus !== 'rejected' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              rejectDonation(don.id);
+                              showToast(`Donation ${don.reference || don.id} marked rejected.`);
+                            }}
+                            className="px-3 py-2 border border-[#D94E34]/40 text-[#D94E34] hover:bg-[#D94E34] hover:text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider cursor-pointer"
+                          >
+                            Flag
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            deleteDonation(don.id);
+                            showToast('Donation entry removed.');
+                          }}
+                          className="p-2 border border-[#141413]/20 text-[#6E6D68] hover:text-[#D94E34] hover:border-[#D94E34] cursor-pointer"
+                          title="Delete Donation Record"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         )}

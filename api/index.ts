@@ -619,8 +619,252 @@ const DEFAULT_BLOGS: BlogPost[] = [
 const PRIMARY_DATA_PATH = path.resolve(process.cwd(), "src/data/persisted_blogs.json");
 const TMP_DATA_PATH = path.resolve("/tmp", "serikali_persisted_blogs.json");
 
+const PRIMARY_PAYMENT_SETTINGS_PATH = path.resolve(process.cwd(), "src/data/serikali_payment_settings.json");
+const TMP_PAYMENT_SETTINGS_PATH = path.resolve("/tmp", "serikali_payment_settings.json");
+
+const PRIMARY_DONATIONS_PATH = path.resolve(process.cwd(), "src/data/serikali_donations.json");
+const TMP_DONATIONS_PATH = path.resolve("/tmp", "serikali_donations.json");
+
+const PRIMARY_REQUESTS_PATH = path.resolve(process.cwd(), "src/data/serikali_service_requests.json");
+const TMP_REQUESTS_PATH = path.resolve("/tmp", "serikali_service_requests.json");
+
+export interface ServerPaymentSettings {
+  paybillNumber: string;
+  paybillAccountName: string;
+  paybillAccountReference: string;
+  donationsTillNumber: string;
+  donationsTillName: string;
+  paymentInstructionsNote?: string;
+  updatedAt?: string;
+}
+
+export interface ServerDonationRecord {
+  id: string;
+  reference: string;
+  ref?: string;
+  donorName: string;
+  contact: string;
+  donorContact?: string;
+  amount: number;
+  method: string;
+  tillNumber: string;
+  mpesaMessage?: string;
+  mpesaCode?: string;
+  paymentStatus: "pending" | "verifying" | "confirmed" | "rejected";
+  blogTitle: string;
+  note?: string;
+  createdAt: string;
+  confirmedAt?: string;
+}
+
+const DEFAULT_PAYMENT_SETTINGS: ServerPaymentSettings = {
+  paybillNumber: "",
+  paybillAccountName: "SERIKALI GUIDE",
+  paybillAccountReference: "SERIKALI-GUIDE",
+  donationsTillNumber: "9309020",
+  donationsTillName: "Serikali Guide Support Till",
+  paymentInstructionsNote:
+    "Send your service fee via M-Pesa Paybill using the Paybill Number and Account Reference above, then paste your full M-Pesa confirmation SMS or 10-character M-Pesa receipt code below for admin verification.",
+  updatedAt: new Date().toISOString(),
+};
+
 let blogsCache: BlogPost[] = [];
+let paymentSettingsCache: ServerPaymentSettings | null = null;
+let donationsCache: ServerDonationRecord[] | null = null;
+let serviceRequestsCache: any[] | null = null;
 const mediaCache = new Map<string, { id: string; contentType: string; buffer: Buffer; alt: string; createdAt: string }>();
+
+function readJsonDual<T>(tmpPath: string, primaryPath: string, fallback: T): T {
+  try {
+    if (fs.existsSync(tmpPath)) {
+      const content = fs.readFileSync(tmpPath, "utf-8");
+      const parsed = JSON.parse(content);
+      if (parsed !== null && parsed !== undefined) return parsed as T;
+    }
+  } catch {}
+  try {
+    if (fs.existsSync(primaryPath)) {
+      const content = fs.readFileSync(primaryPath, "utf-8");
+      const parsed = JSON.parse(content);
+      if (parsed !== null && parsed !== undefined) return parsed as T;
+    }
+  } catch {}
+  return fallback;
+}
+
+function writeJsonDual(tmpPath: string, primaryPath: string, data: unknown) {
+  const jsonStr = JSON.stringify(data, null, 2);
+  try {
+    fs.writeFileSync(tmpPath, jsonStr, "utf-8");
+  } catch {}
+  try {
+    const dir = path.dirname(primaryPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(primaryPath, jsonStr, "utf-8");
+  } catch {}
+}
+
+export function extractMpesaReceiptCode(text?: string): string {
+  if (!text || typeof text !== "string") return "";
+  const cleaned = text.trim().toUpperCase();
+  // Match classic 10-char M-Pesa transaction code at start or anywhere (contains both letters & digits)
+  const candidates: string[] = cleaned.match(/\b([A-Z0-9]{10})\b/g) || [];
+  const withDigitsAndLetters = candidates.find(
+    (c) => /[A-Z]/.test(c) && /\d/.test(c)
+  );
+  if (withDigitsAndLetters) return withDigitsAndLetters;
+  if (candidates[0]) return candidates[0];
+  return cleaned.length <= 24 ? cleaned : "";
+}
+
+export function loadPaymentSettings(): ServerPaymentSettings {
+  if (paymentSettingsCache) return paymentSettingsCache;
+  const loaded = readJsonDual<Partial<ServerPaymentSettings>>(
+    TMP_PAYMENT_SETTINGS_PATH,
+    PRIMARY_PAYMENT_SETTINGS_PATH,
+    {}
+  );
+  paymentSettingsCache = {
+    ...DEFAULT_PAYMENT_SETTINGS,
+    ...loaded,
+    donationsTillNumber: loaded.donationsTillNumber || "9309020",
+  };
+  return paymentSettingsCache;
+}
+
+export function persistPaymentSettings(next: ServerPaymentSettings) {
+  paymentSettingsCache = next;
+  writeJsonDual(TMP_PAYMENT_SETTINGS_PATH, PRIMARY_PAYMENT_SETTINGS_PATH, next);
+}
+
+export function loadDonations(): ServerDonationRecord[] {
+  if (donationsCache) return donationsCache;
+  const loaded = readJsonDual<ServerDonationRecord[]>(
+    TMP_DONATIONS_PATH,
+    PRIMARY_DONATIONS_PATH,
+    []
+  );
+  donationsCache = Array.isArray(loaded) ? loaded : [];
+  return donationsCache;
+}
+
+export function persistDonations(next: ServerDonationRecord[]) {
+  donationsCache = next;
+  writeJsonDual(TMP_DONATIONS_PATH, PRIMARY_DONATIONS_PATH, next);
+}
+
+export function loadServiceRequests(): any[] {
+  if (serviceRequestsCache) return serviceRequestsCache;
+  const loaded = readJsonDual<any[]>(
+    TMP_REQUESTS_PATH,
+    PRIMARY_REQUESTS_PATH,
+    []
+  );
+  serviceRequestsCache = Array.isArray(loaded) ? loaded : [];
+  return serviceRequestsCache;
+}
+
+export function persistServiceRequests(next: any[]) {
+  serviceRequestsCache = next;
+  writeJsonDual(TMP_REQUESTS_PATH, PRIMARY_REQUESTS_PATH, next);
+}
+
+function generateUniqueTrackingNumber(existing: any[]): string {
+  const used = new Set(
+    existing.map((r) => String(r.referenceNumber || "").toUpperCase())
+  );
+  for (let i = 0; i < 20; i++) {
+    const randNum = Math.floor(100000 + Math.random() * 900000);
+    const candidate = `SG-2026-${randNum}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `SG-2026-${Date.now().toString().slice(-6)}`;
+}
+
+const KENYA_2026_STATUTORY_CONTEXT = `Current Date: November 2026.
+Verified Republic of Kenya Statutory & Digital Administration Baseline (2026):
+- Immigration: Directorate of Immigration Services via fns.immigration.go.ke (eFNS) & Kenya eTA via etakenya.go.ke. Classes include Class D (Employment w/ Kenyan understudy), Class G (Investor USD 100k+), Class K (Ordinary Resident 35+ USD 24k income), Class I (Missionary/PBO), Class N (Digital Nomad Permit), Form 25 & Alien Card (Form 22).
+- Health & Social Security: Social Health Authority (SHA / Social Health Insurance Fund SHIF) has officially replaced NHIF as mandatory statutory health remittance (2.75% gross income, due 9th of month alongside NSSF & Affordable Housing Levy).
+- Civil Identity: National Registration Bureau (NRB) Maisha Namba (3rd-Generation Digital ID) alongside huduma/eCitizen Single Sign-On at accounts.ecitizen.go.ke.
+- Tax & Revenue: KRA iTax (itax.kra.go.ke) & mandatory eTIMS electronic tax invoicing (etims.kra.go.ke) under Tax Procedures Act Sec 23A (non-eTIMS expenses are disallowed for corporate income tax).
+- Business Registration: Business Registration Service (brs.ecitizen.go.ke) with mandatory Beneficial Ownership Register filing (Form BOF1) under Sec 93A Companies Act.
+- Non-Profits / NGOs: Public Benefits Organizations Regulatory Authority (PBORA, pbora.go.ke) under operationalized PBO Act 2013 (1/3 Kenyan resident board rule for INGOs, Form 14 annual returns).
+- Land & Property: Ministry of Lands Ardhisasa digital registry (ardhisasa.lands.go.ke).
+- Data Protection: ODPC (odpc.go.ke) — mandatory Data Controller/Processor registration & 72-hour data breach notification under Data Protection Act Sec 43.
+- Government Payments: Unified eCitizen Government Paybill 222222 with PRN invoices.`;
+
+function parseJsonFromAiText(rawText: string): any {
+  const cleaned = rawText
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const startIdx = cleaned.indexOf("{");
+    const endIdx = cleaned.lastIndexOf("}");
+    if (startIdx !== -1 && endIdx > startIdx) {
+      return JSON.parse(cleaned.slice(startIdx, endIdx + 1));
+    }
+    throw new Error("Could not parse JSON from AI response");
+  }
+}
+
+async function generateGroundedJsonWithGemini({
+  ai,
+  prompt,
+  systemInstruction,
+  responseSchema,
+}: {
+  ai: GoogleGenAI;
+  prompt: string;
+  systemInstruction: string;
+  responseSchema: any;
+}): Promise<{ data: any; groundingSources: Array<{ title: string; uri: string }> }> {
+  // Attempt 1: Live Google Search grounding with gemini-4-hydrogen for up-to-date November 2026 facts
+  try {
+    const searchPrompt = `${prompt}\n\nIMPORTANT: Return ONLY a single valid JSON object (no markdown fences, no commentary before or after).`;
+    const groundedRes = await ai.models.generateContent({
+      model: "gemini-4-hydrogen",
+      contents: searchPrompt,
+      config: {
+        systemInstruction,
+        tools: [{ googleSearch: {} }],
+      },
+    });
+    const text = groundedRes.text;
+    if (text) {
+      const parsed = parseJsonFromAiText(text);
+      const chunks = groundedRes.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      const groundingSources = chunks
+        .filter((c: any) => c?.web?.uri)
+        .map((c: any) => ({
+          title: c.web.title || c.web.uri,
+          uri: c.web.uri,
+        }))
+        .slice(0, 5);
+      return { data: parsed, groundingSources };
+    }
+  } catch {
+    // Fall through cleanly to strict structured JSON schema call
+  }
+
+  // Attempt 2: Strict structured JSON responseSchema on gemini-4-hydrogen
+  const schemaRes = await ai.models.generateContent({
+    model: "gemini-4-hydrogen",
+    contents: prompt,
+    config: {
+      systemInstruction,
+      responseMimeType: "application/json",
+      responseSchema,
+    },
+  });
+  const text = schemaRes.text;
+  if (!text) throw new Error("Empty response from AI");
+  return { data: parseJsonFromAiText(text), groundingSources: [] };
+}
 
 export function loadBlogs(): BlogPost[] {
   if (blogsCache.length > 0) return blogsCache;
@@ -652,15 +896,7 @@ export function loadBlogs(): BlogPost[] {
 }
 
 export function persistBlogs() {
-  const jsonStr = JSON.stringify(blogsCache, null, 2);
-  try {
-    fs.writeFileSync(TMP_DATA_PATH, jsonStr, "utf-8");
-  } catch {}
-  try {
-    const dir = path.dirname(PRIMARY_DATA_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(PRIMARY_DATA_PATH, jsonStr, "utf-8");
-  } catch {}
+  writeJsonDual(TMP_DATA_PATH, PRIMARY_DATA_PATH, blogsCache);
 }
 
 const activeAdminSessions = new Map<string, number>();
@@ -1026,6 +1262,336 @@ router.post("/forms/submit", (req: Request, res: Response) => {
   }
 });
 
+// 9B. Payment Settings (Paybill for Services + Donations Till 9309020)
+router.get("/payment-settings", (_req: Request, res: Response) => {
+  try {
+    res.json(loadPaymentSettings());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to load payment settings." });
+  }
+});
+
+router.put("/payment-settings", requireAdmin, (req: Request, res: Response) => {
+  try {
+    const current = loadPaymentSettings();
+    const body = req.body || {};
+    const updated: ServerPaymentSettings = {
+      paybillNumber:
+        typeof body.paybillNumber === "string"
+          ? body.paybillNumber.trim()
+          : current.paybillNumber,
+      paybillAccountName:
+        typeof body.paybillAccountName === "string" && body.paybillAccountName.trim()
+          ? body.paybillAccountName.trim()
+          : current.paybillAccountName,
+      paybillAccountReference:
+        typeof body.paybillAccountReference === "string" && body.paybillAccountReference.trim()
+          ? body.paybillAccountReference.trim()
+          : current.paybillAccountReference,
+      donationsTillNumber:
+        typeof body.donationsTillNumber === "string" && body.donationsTillNumber.trim()
+          ? body.donationsTillNumber.trim()
+          : current.donationsTillNumber || "9309020",
+      donationsTillName:
+        typeof body.donationsTillName === "string" && body.donationsTillName.trim()
+          ? body.donationsTillName.trim()
+          : current.donationsTillName,
+      paymentInstructionsNote:
+        typeof body.paymentInstructionsNote === "string"
+          ? body.paymentInstructionsNote.trim()
+          : current.paymentInstructionsNote,
+      updatedAt: new Date().toISOString(),
+    };
+    persistPaymentSettings(updated);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to save payment settings." });
+  }
+});
+
+// 9C. Reader Donations via Buy Goods Till 9309020 + Admin Verification
+router.get("/donations", requireAdmin, (_req: Request, res: Response) => {
+  try {
+    res.json(loadDonations());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to load donations." });
+  }
+});
+
+router.post("/donations", (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      res.status(400).json({ error: "Please provide a valid donation amount." });
+      return;
+    }
+    const rawMsg = typeof body.mpesaMessage === "string" ? body.mpesaMessage.trim() : "";
+    const extracted =
+      extractMpesaReceiptCode(typeof body.mpesaCode === "string" ? body.mpesaCode : "") ||
+      extractMpesaReceiptCode(rawMsg);
+    if (!extracted && !rawMsg) {
+      res.status(400).json({
+        error: "Please paste your M-Pesa confirmation message or 10-character M-Pesa transaction code.",
+      });
+      return;
+    }
+
+    const existing = loadDonations();
+    const ref = `SG-DON-${Math.floor(100000 + Math.random() * 900000)}`;
+    const nowStr = new Date().toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const till = (typeof body.tillNumber === "string" && body.tillNumber.trim()) || "9309020";
+
+    const created: ServerDonationRecord = {
+      id: `don-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      reference: ref,
+      ref,
+      donorName: (body.donorName || "Supporter").toString().trim() || "Supporter",
+      contact: (body.contact || "M-Pesa Supporter").toString().trim() || "M-Pesa Supporter",
+      amount,
+      tillNumber: till,
+      method: `M-Pesa Buy Goods Till ${till}`,
+      mpesaMessage: rawMsg || extracted,
+      mpesaCode: extracted,
+      paymentStatus: "verifying",
+      blogTitle: (body.blogTitle || "Serikali Guide Editorial Fund").toString(),
+      note: typeof body.note === "string" ? body.note.trim() : "",
+      createdAt: nowStr,
+    };
+
+    const next = [created, ...existing];
+    persistDonations(next);
+    res.status(201).json(created);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to record donation." });
+  }
+});
+
+router.put("/donations/:id", requireAdmin, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const list = loadDonations();
+    const idx = list.findIndex((d) => d.id === id || d.reference === id);
+    if (idx === -1) {
+      res.status(404).json({ error: "Donation record not found." });
+      return;
+    }
+    const body = req.body || {};
+    const status = body.paymentStatus || list[idx].paymentStatus;
+    const updated: ServerDonationRecord = {
+      ...list[idx],
+      ...body,
+      id: list[idx].id,
+      paymentStatus: status,
+      confirmedAt: status === "confirmed" ? new Date().toISOString() : list[idx].confirmedAt,
+    };
+    const next = [...list];
+    next[idx] = updated;
+    persistDonations(next);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to update donation." });
+  }
+});
+
+router.delete("/donations/:id", requireAdmin, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const list = loadDonations();
+    const next = list.filter((d) => d.id !== id && d.reference !== id);
+    if (next.length === list.length) {
+      res.status(404).json({ error: "Donation record not found." });
+      return;
+    }
+    persistDonations(next);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to delete donation." });
+  }
+});
+
+// 9D. Isolated Service Requests & Unique Tracking Number Lookup
+router.post("/service-requests", (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const existing = loadServiceRequests();
+    const requestedRef =
+      typeof body.referenceNumber === "string" ? body.referenceNumber.trim().toUpperCase() : "";
+    const isCollision =
+      !requestedRef || existing.some((r) => String(r.referenceNumber || "").toUpperCase() === requestedRef);
+    const referenceNumber = isCollision
+      ? generateUniqueTrackingNumber(existing)
+      : requestedRef;
+
+    const mpesaMsg = typeof body.mpesaMessage === "string" ? body.mpesaMessage.trim() : "";
+    const mpesaCode =
+      extractMpesaReceiptCode(typeof body.mpesaCode === "string" ? body.mpesaCode : "") ||
+      extractMpesaReceiptCode(mpesaMsg) ||
+      (typeof body.paymentReference === "string" ? body.paymentReference.trim() : "");
+
+    const nowStr = new Date().toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const created = {
+      ...body,
+      id: body.id || `req-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      referenceNumber,
+      mpesaMessage: mpesaMsg,
+      mpesaCode,
+      paymentReference: mpesaCode || body.paymentReference || "PAYBILL-PENDING",
+      paymentMethod: body.paymentMethod || "mpesa-paybill",
+      paymentStatus: body.paymentStatus || "verifying",
+      status: body.status || "Received",
+      statusNotes:
+        body.statusNotes ||
+        "Application received. M-Pesa Paybill payment queued for admin confirmation.",
+      nextStepNote:
+        body.nextStepNote ||
+        "Our admin desk is confirming your M-Pesa Paybill transaction and auditing your documents.",
+      createdAt: body.createdAt || nowStr,
+      updatedAt: nowStr,
+    };
+
+    const next = [created, ...existing.filter((r) => r.id !== created.id)];
+    persistServiceRequests(next);
+    res.status(201).json(created);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to store service request." });
+  }
+});
+
+// Public Single-Record Isolated Tracking Endpoint (NEVER returns a list of other clients)
+router.get("/service-requests/track/:referenceNumber", (req: Request, res: Response) => {
+  try {
+    const cleanRef = (req.params.referenceNumber || "").trim().toUpperCase();
+    if (!cleanRef || cleanRef.length < 5) {
+      res.status(400).json({ error: "Please enter a valid tracking reference number." });
+      return;
+    }
+    const list = loadServiceRequests();
+    const match = list.find(
+      (r) => String(r.referenceNumber || "").trim().toUpperCase() === cleanRef
+    );
+    if (!match) {
+      res.status(404).json({ error: "No application matches that tracking reference number." });
+      return;
+    }
+    // Return isolated tracking dossier for this single reference only
+    res.json({
+      id: match.id,
+      referenceNumber: match.referenceNumber,
+      serviceId: match.serviceId,
+      serviceName: match.serviceName,
+      category: match.category,
+      categoryName: match.categoryName,
+      serviceFee: match.serviceFee,
+      governmentFee: match.governmentFee,
+      governmentFeeIncluded: match.governmentFeeIncluded,
+      discount: match.discount || 0,
+      totalPaid: match.totalPaid,
+      currency: match.currency || "KES",
+      clientName: match.clientName,
+      clientEmail: match.clientEmail,
+      clientPhone: match.clientPhone,
+      clientNationality: match.clientNationality,
+      answers: match.answers || {},
+      documents: Array.isArray(match.documents)
+        ? match.documents.map((d: any) => ({
+            documentId: d.documentId,
+            documentName: d.documentName,
+            fileName: d.fileName,
+            fileSize: d.fileSize,
+            fileType: d.fileType,
+            uploadedAt: d.uploadedAt,
+            retentionExpiresAt: d.retentionExpiresAt,
+          }))
+        : [],
+      paymentMethod: match.paymentMethod,
+      paymentReference: match.paymentReference,
+      mpesaCode: match.mpesaCode,
+      paybillNumber: match.paybillNumber,
+      paybillAccountRef: match.paybillAccountRef,
+      paymentStatus: match.paymentStatus,
+      paidAt: match.paidAt,
+      paymentConfirmedAt: match.paymentConfirmedAt,
+      status: match.status,
+      statusNotes: match.statusNotes,
+      nextStepNote: match.nextStepNote,
+      createdAt: match.createdAt,
+      updatedAt: match.updatedAt,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Tracking lookup failed." });
+  }
+});
+
+router.get("/service-requests", requireAdmin, (_req: Request, res: Response) => {
+  try {
+    res.json(loadServiceRequests());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to load service requests." });
+  }
+});
+
+router.put("/service-requests/:id", requireAdmin, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const list = loadServiceRequests();
+    const idx = list.findIndex((r) => r.id === id || r.referenceNumber === id);
+    if (idx === -1) {
+      res.status(404).json({ error: "Service request not found." });
+      return;
+    }
+    const nowStr = new Date().toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const body = req.body || {};
+    const updated = {
+      ...list[idx],
+      ...body,
+      id: list[idx].id,
+      updatedAt: nowStr,
+    };
+    const next = [...list];
+    next[idx] = updated;
+    persistServiceRequests(next);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to update service request." });
+  }
+});
+
+router.delete("/service-requests/:id", requireAdmin, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const list = loadServiceRequests();
+    const next = list.filter((r) => r.id !== id && r.referenceNumber !== id);
+    if (next.length === list.length) {
+      res.status(404).json({ error: "Service request not found." });
+      return;
+    }
+    persistServiceRequests(next);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to delete service request." });
+  }
+});
+
 // 10. AI Blog Generator (Grounded in Verified Republic of Kenya Regulations)
 router.post("/ai/generate-serikali-blog", async (req: Request, res: Response) => {
   const { topic, categoryId } = req.body || {};
@@ -1050,7 +1616,9 @@ router.post("/ai/generate-serikali-blog", async (req: Request, res: Response) =>
       });
 
       const prompt = `You are Senior Kenya Regulatory Legal Counsel & Editorial Director at SERIKALI GUIDE.
-Today is 2026. Generate an authoritative, legally precise regulatory dossier for the following topic:
+${KENYA_2026_STATUTORY_CONTEXT}
+
+Generate an authoritative, legally precise November 2026 regulatory dossier for the following topic:
 "${cleanTopic}"
 
 MANDATORY STATUTORY GROUND TRUTH CONTEXT (Republic of Kenya):
@@ -1065,80 +1633,77 @@ MANDATORY STATUTORY GROUND TRUTH CONTEXT (Republic of Kenya):
 - Unified Payment Portal: Official Government Paybill 222222
 
 STRICT ANTI-HALLUCINATION & FACTUAL ACCURACY CONSTRAINTS:
-1. NEVER USE VAGUE WORDS or placeholder phrasing (e.g. "relevant authorities", "applicable fees", "necessary documents", "as per law", or "consult officials").
-2. INVENT NOTHING: Every fee figure MUST be exact numbers in KSh or USD matching the gazetted schedule (e.g., KSh 500,000 for Class D, KSh 10,650 for company incorporation, KSh 1,050 for Good Conduct).
-3. EXPLICIT CITATIONS: Explicitly cite the governing Act of Parliament, section numbers, and statutory form codes (e.g., Form 25, Form CR12, Form BOF1, Form C24).
-4. PROCEDURAL RIGOR: Detail sequential step-by-step procedures on how the applicant files through ${knowledge.officialPortal} via Government Paybill 222222 and receives official certificates.
-5. THREE-PART SECTION STRUCTURE in "content":
+1. Reflect November 2026 active law (e.g., SHA/SHIF instead of abolished NHIF, PBO Act 2013 & PBORA instead of old NGO Board where applicable, Kenya eTA, eTIMS mandatory invoicing, Maisha Namba).
+2. NEVER USE VAGUE WORDS or placeholder phrasing (e.g. "relevant authorities", "applicable fees", "necessary documents", "as per law", or "consult officials").
+3. INVENT NOTHING: Every fee figure MUST be exact numbers in KSh or USD matching the gazetted schedule.
+4. EXPLICIT CITATIONS: Explicitly cite the governing Act of Parliament, section numbers, and statutory form codes (e.g., Form 25, Form CR12, Form BOF1, Form C24).
+5. PROCEDURAL RIGOR: Detail sequential step-by-step procedures on how the applicant files through ${knowledge.officialPortal} via Government Paybill 222222 and receives official certificates.
+6. THREE-PART SECTION STRUCTURE in "content":
    - Section 1: Statutory Mandate & Strict Eligibility Criteria (citing Act and Section)
    - Section 2: Step-by-Step Filing Workflow & Mandatory Document Dossier
    - Section 3: Gazetted Fee Schedule, Processing Timelines & Penal Sanctions for Non-Compliance`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          systemInstruction:
-            "You are an authoritative Kenyan regulatory legal analyst. Output accurate JSON strictly conforming to the schema without guessing or generic filler.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              subtitle: { type: Type.STRING },
-              categoryId: { type: Type.STRING },
-              categoryName: { type: Type.STRING },
-              subCategoryName: { type: Type.STRING },
-              excerpt: { type: Type.STRING },
-              officialPortal: { type: Type.STRING },
-              readTime: { type: Type.STRING },
-              author: { type: Type.STRING },
-              authorRole: { type: Type.STRING },
-              image: { type: Type.STRING },
-              keyTakeaways: { type: Type.ARRAY, items: { type: Type.STRING } },
-              sectionHeading: { type: Type.STRING },
-              sectionBody: { type: Type.STRING },
-              checklist: { type: Type.ARRAY, items: { type: Type.STRING } },
-              callout: { type: Type.STRING },
-              content: { type: Type.STRING },
-              metaTitle: { type: Type.STRING },
-              metaDescription: { type: Type.STRING },
-              keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
-            },
-            required: [
-              "title",
-              "subtitle",
-              "categoryId",
-              "categoryName",
-              "subCategoryName",
-              "excerpt",
-              "officialPortal",
-              "readTime",
-              "author",
-              "authorRole",
-              "keyTakeaways",
-              "sectionHeading",
-              "sectionBody",
-              "checklist",
-              "callout",
-              "metaTitle",
-              "metaDescription",
-              "keywords",
-            ],
-          },
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          subtitle: { type: Type.STRING },
+          categoryId: { type: Type.STRING },
+          categoryName: { type: Type.STRING },
+          subCategoryName: { type: Type.STRING },
+          excerpt: { type: Type.STRING },
+          officialPortal: { type: Type.STRING },
+          readTime: { type: Type.STRING },
+          author: { type: Type.STRING },
+          authorRole: { type: Type.STRING },
+          image: { type: Type.STRING },
+          keyTakeaways: { type: Type.ARRAY, items: { type: Type.STRING } },
+          sectionHeading: { type: Type.STRING },
+          sectionBody: { type: Type.STRING },
+          checklist: { type: Type.ARRAY, items: { type: Type.STRING } },
+          callout: { type: Type.STRING },
+          content: { type: Type.STRING },
+          metaTitle: { type: Type.STRING },
+          metaDescription: { type: Type.STRING },
+          keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
         },
+        required: [
+          "title",
+          "subtitle",
+          "categoryId",
+          "categoryName",
+          "subCategoryName",
+          "excerpt",
+          "officialPortal",
+          "readTime",
+          "author",
+          "authorRole",
+          "keyTakeaways",
+          "sectionHeading",
+          "sectionBody",
+          "checklist",
+          "callout",
+          "metaTitle",
+          "metaDescription",
+          "keywords",
+        ],
+      };
+
+      const { data: parsed } = await generateGroundedJsonWithGemini({
+        ai,
+        prompt,
+        systemInstruction:
+          "You are an authoritative Kenyan regulatory legal analyst in November 2026. Verify current rules via Google Search when helpful and output accurate JSON strictly conforming to the required fields without guessing or generic filler.",
+        responseSchema: schema,
       });
 
-      const text = response.text;
-      if (!text) throw new Error("Empty response from AI");
-      const parsed = JSON.parse(text.trim());
-      if (!parsed.image || parsed.image.startsWith("http://example")) {
+      if (!parsed.image || String(parsed.image).startsWith("http://example")) {
         parsed.image = knowledge.recommendedPhoto;
       }
       return parsed;
     })();
 
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 15000));
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 20000));
     const rawResult = await Promise.race([aiCall, timeoutPromise]);
     // Run accuracy validation step
     const validation = validateRegulatoryAccuracy(rawResult, cleanTopic, knowledge);
@@ -1173,7 +1738,9 @@ router.post("/ai/generate-serikali-service", async (req: Request, res: Response)
         httpOptions: { headers: { "User-Agent": "aistudio-build" } },
       });
 
-      const prompt = `Generate an official Kenyan service category structure for "${cleanTopic}".
+      const prompt = `${KENYA_2026_STATUTORY_CONTEXT}
+
+Generate an official November 2026 Kenyan service category structure for "${cleanTopic}".
 Context:
 - Governing Law: ${knowledge.governingLaw}
 - Agency: ${knowledge.regulatoryAgency}
@@ -1181,60 +1748,56 @@ Context:
 - Gazetted Fees: ${knowledge.gazettedFees}
 - Timeline: ${knowledge.processingTimeline}`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: "Expert Kenyan government regulatory architect. Output verified, accurate JSON only.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              shortLabel: { type: Type.STRING },
-              agencyBadge: { type: Type.STRING },
-              agency: { type: Type.STRING },
-              heroSubtitle: { type: Type.STRING },
-              editorialHeadline: { type: Type.STRING },
-              overview: { type: Type.STRING },
-              metaTitle: { type: Type.STRING },
-              metaDescription: { type: Type.STRING },
-              subCategories: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    summary: { type: Type.STRING },
-                    portal: { type: Type.STRING },
-                    timeline: { type: Type.STRING },
-                    statutoryNote: { type: Type.STRING },
-                    feeNote: { type: Type.STRING },
-                    requirements: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    steps: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: { title: { type: Type.STRING }, detail: { type: Type.STRING } },
-                        required: ["title", "detail"],
-                      },
-                    },
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          shortLabel: { type: Type.STRING },
+          agencyBadge: { type: Type.STRING },
+          agency: { type: Type.STRING },
+          heroSubtitle: { type: Type.STRING },
+          editorialHeadline: { type: Type.STRING },
+          overview: { type: Type.STRING },
+          metaTitle: { type: Type.STRING },
+          metaDescription: { type: Type.STRING },
+          subCategories: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                summary: { type: Type.STRING },
+                portal: { type: Type.STRING },
+                timeline: { type: Type.STRING },
+                statutoryNote: { type: Type.STRING },
+                feeNote: { type: Type.STRING },
+                requirements: { type: Type.ARRAY, items: { type: Type.STRING } },
+                steps: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: { title: { type: Type.STRING }, detail: { type: Type.STRING } },
+                    required: ["title", "detail"],
                   },
-                  required: ["name", "summary", "portal", "timeline", "statutoryNote", "feeNote", "requirements", "steps"],
                 },
               },
+              required: ["name", "summary", "portal", "timeline", "statutoryNote", "feeNote", "requirements", "steps"],
             },
-            required: ["name", "shortLabel", "agencyBadge", "agency", "heroSubtitle", "editorialHeadline", "overview", "metaTitle", "metaDescription", "subCategories"],
           },
         },
-      });
+        required: ["name", "shortLabel", "agencyBadge", "agency", "heroSubtitle", "editorialHeadline", "overview", "metaTitle", "metaDescription", "subCategories"],
+      };
 
-      const text = response.text;
-      if (!text) throw new Error("Empty response");
-      return JSON.parse(text.trim());
+      const { data: result } = await generateGroundedJsonWithGemini({
+        ai,
+        prompt,
+        systemInstruction: "Expert Kenyan government regulatory architect in November 2026. Verify current Kenyan statutes and output accurate JSON.",
+        responseSchema: schema,
+      });
+      return result;
     })();
 
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 6000));
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 15000));
     const result = await Promise.race([aiCall, timeoutPromise]);
     res.json(result);
   } catch {
@@ -1574,7 +2137,7 @@ router.post("/ai/search-assistant", async (req: Request, res: Response) => {
     sourceTitle: "Serikali Guide Knowledge Base",
   };
 
-  // If Gemini API Key is available, use gemini-3.8-flash for dynamic enhancement
+  // If Gemini API Key is available, use gemini-4-hydrogen with live Google Search grounding for November 2026 accuracy
   const apiKey = process.env.GEMINI_API_KEY;
   if (apiKey) {
     try {
@@ -1584,84 +2147,86 @@ router.post("/ai/search-assistant", async (req: Request, res: Response) => {
       });
 
       const dynamicPrompt = `You are Senior Kenya Regulatory Legal Counsel & Civic Intelligence Officer at SERIKALI GUIDE.
-A citizen or resident has presented this specific situation or problem:
+${KENYA_2026_STATUTORY_CONTEXT}
+Target Response Language: ${language || "en"}
+
+A citizen or resident has presented this specific situation or query:
 "${cleanQuery}"
 
 Grounded context from live Serikali Guide regulatory catalog:
 ${contextSummary || `Official Portals: ${portal}, Governing Law: ${governingLaw}, Fees: ${statutoryFees}`}
 
-Provide a super-intelligent, legally rigorous, practical response formatted as JSON.
+Provide a super-intelligent, legally rigorous, current November 2026 response formatted as a single JSON object.
 Constraints:
-1. Identify the exact problem and urgency level.
-2. Outline sequential step-by-step instructions ("whatToDoSteps") with exact statutory authorities (e.g. Kenya Police OB, DCI Cybercrime, eCitizen Form 19, ODPC Section 43, Commissioner for Oaths).
-3. Specify exact portals (.go.ke) and exact gazetted fees.
+1. Identify the exact problem and urgency level using active November 2026 Kenyan procedures (use SHA/SHIF not NHIF, PBORA/PBO Act 2013, eFNS/eTA, eTIMS, BRS BOF1, Maisha Namba where relevant).
+2. Outline sequential step-by-step instructions ("whatToDoSteps") with exact statutory authorities and forms.
+3. Specify exact official portals (.go.ke) and accurate gazetted fees.
 4. Keep tone professional, empathetic, authoritative, and actionable.`;
 
-      const aiResponse = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: dynamicPrompt,
-        config: {
-          systemInstruction:
-            "You are an authoritative Kenyan regulatory legal analyst. Return verified procedures strictly conforming to Kenyan statutory law.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              problemIdentified: { type: Type.STRING },
-              urgency: { type: Type.STRING },
-              solutionTitle: { type: Type.STRING },
-              solutionOverview: { type: Type.STRING },
-              portal: { type: Type.STRING },
-              timeline: { type: Type.STRING },
-              statutoryFees: { type: Type.STRING },
-              governingLaw: { type: Type.STRING },
-              whatToDoSteps: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    stepNumber: { type: Type.INTEGER },
-                    title: { type: Type.STRING },
-                    detail: { type: Type.STRING },
-                    isUrgent: { type: Type.BOOLEAN },
-                  },
-                  required: ["stepNumber", "title", "detail"],
-                },
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          problemIdentified: { type: Type.STRING },
+          urgency: { type: Type.STRING },
+          solutionTitle: { type: Type.STRING },
+          solutionOverview: { type: Type.STRING },
+          portal: { type: Type.STRING },
+          timeline: { type: Type.STRING },
+          statutoryFees: { type: Type.STRING },
+          governingLaw: { type: Type.STRING },
+          whatToDoSteps: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                stepNumber: { type: Type.INTEGER },
+                title: { type: Type.STRING },
+                detail: { type: Type.STRING },
+                isUrgent: { type: Type.BOOLEAN },
               },
-              followUpQuestions: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
+              required: ["stepNumber", "title", "detail"],
             },
-            required: ["problemIdentified", "solutionTitle", "solutionOverview", "whatToDoSteps"],
+          },
+          followUpQuestions: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
           },
         },
+        required: ["problemIdentified", "solutionTitle", "solutionOverview", "whatToDoSteps"],
+      };
+
+      const { data: parsed, groundingSources } = await generateGroundedJsonWithGemini({
+        ai,
+        prompt: dynamicPrompt,
+        systemInstruction:
+          "You are an authoritative Kenyan regulatory legal analyst in November 2026. Return verified, up-to-date procedures strictly conforming to current Kenyan statutory law.",
+        responseSchema: schema,
       });
 
-      if (aiResponse.text) {
-        const parsed = JSON.parse(aiResponse.text);
-        if (parsed && parsed.solutionOverview) {
-          res.json({
-            ...responsePayload,
-            problemIdentified: parsed.problemIdentified || responsePayload.problemIdentified,
-            urgency: parsed.urgency || responsePayload.urgency,
-            solutionTitle: parsed.solutionTitle || responsePayload.solutionTitle,
-            answer: parsed.solutionOverview,
-            solutionOverview: parsed.solutionOverview,
-            portal: parsed.portal || responsePayload.portal,
-            timeline: parsed.timeline || responsePayload.timeline,
-            statutoryFees: parsed.statutoryFees || responsePayload.statutoryFees,
-            governingLaw: parsed.governingLaw || responsePayload.governingLaw,
-            whatToDoSteps: Array.isArray(parsed.whatToDoSteps) && parsed.whatToDoSteps.length > 0
+      if (parsed && parsed.solutionOverview) {
+        res.json({
+          ...responsePayload,
+          problemIdentified: parsed.problemIdentified || responsePayload.problemIdentified,
+          urgency: parsed.urgency || responsePayload.urgency,
+          solutionTitle: parsed.solutionTitle || responsePayload.solutionTitle,
+          answer: parsed.solutionOverview,
+          solutionOverview: parsed.solutionOverview,
+          portal: parsed.portal || responsePayload.portal,
+          timeline: parsed.timeline || responsePayload.timeline,
+          statutoryFees: parsed.statutoryFees || responsePayload.statutoryFees,
+          governingLaw: parsed.governingLaw || responsePayload.governingLaw,
+          whatToDoSteps:
+            Array.isArray(parsed.whatToDoSteps) && parsed.whatToDoSteps.length > 0
               ? parsed.whatToDoSteps
               : responsePayload.whatToDoSteps,
-            followUpQuestions: Array.isArray(parsed.followUpQuestions) && parsed.followUpQuestions.length > 0
+          followUpQuestions:
+            Array.isArray(parsed.followUpQuestions) && parsed.followUpQuestions.length > 0
               ? parsed.followUpQuestions
               : responsePayload.followUpQuestions,
-            isAiEnhanced: true,
-          });
-          return;
-        }
+          groundingSources: groundingSources.length > 0 ? groundingSources : undefined,
+          isAiEnhanced: true,
+        });
+        return;
       }
     } catch {
       // Fallback seamlessly to verified regulatory deterministic response

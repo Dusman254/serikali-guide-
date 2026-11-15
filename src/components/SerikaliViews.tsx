@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Copy,
   ExternalLink,
   FileCheck2,
   Heart,
@@ -862,7 +863,7 @@ export const ServiceDetailView: React.FC<{
    ============================================================================ */
 export const BlogDetailView: React.FC<{ blogId: string }> = ({ blogId }) => {
   const { navigate, showToast } = useStore();
-  const { blogPosts, addDonation } = useSerikali();
+  const { blogPosts, addDonation, paymentSettings } = useSerikali();
   const donateSectionRef = useRef<HTMLDivElement>(null);
 
   const post =
@@ -874,12 +875,12 @@ export const BlogDetailView: React.FC<{ blogId: string }> = ({ blogId }) => {
     [blogPosts, post.id]
   );
 
-  // Donation State on Blog Details
+  // Donation State on Blog Details (M-Pesa Buy Goods Till 9309020)
+  const donationsTill = paymentSettings.donationsTillNumber || '9309020';
   const [selectedAmount, setSelectedAmount] = useState<number>(1000);
   const [customAmount, setCustomAmount] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<
-    'M-Pesa Express' | 'Card / International' | 'PayPal'
-  >('M-Pesa Express');
+  const [mpesaMessageInput, setMpesaMessageInput] = useState<string>('');
+  const [copiedTill, setCopiedTill] = useState<boolean>(false);
   const [donorName, setDonorName] = useState<string>('');
   const [donorPhoneOrEmail, setDonorPhoneOrEmail] = useState<string>('');
   const [donorNote, setDonorNote] = useState<string>('');
@@ -888,11 +889,24 @@ export const BlogDetailView: React.FC<{ blogId: string }> = ({ blogId }) => {
     amount: number;
     method: string;
     name: string;
+    mpesaCode?: string;
   } | null>(null);
+
+  const extractedDonationCode = useMemo(() => {
+    const match = mpesaMessageInput.toUpperCase().match(/\b([A-Z][A-Z0-9]{9})\b/);
+    return match ? match[1] : '';
+  }, [mpesaMessageInput]);
 
   const effectiveDonationAmount = customAmount.trim()
     ? Math.max(50, Number(customAmount) || 0)
     : selectedAmount;
+
+  const handleCopyTill = () => {
+    navigator.clipboard?.writeText(donationsTill).catch(() => {});
+    setCopiedTill(true);
+    showToast(`Copied M-Pesa Buy Goods Till: ${donationsTill}`);
+    setTimeout(() => setCopiedTill(false), 2000);
+  };
 
   const handleDonateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -900,22 +914,35 @@ export const BlogDetailView: React.FC<{ blogId: string }> = ({ blogId }) => {
       showToast('Please select or enter a valid donation amount.');
       return;
     }
+    if (mpesaMessageInput.trim().length < 8) {
+      showToast(
+        `Please paste your M-Pesa Till ${donationsTill} confirmation SMS or transaction code.`
+      );
+      return;
+    }
+    const methodLabel = `M-Pesa Buy Goods Till ${donationsTill}`;
     const created = addDonation({
       donorName: donorName.trim() || 'Supporter',
-      contact: donorPhoneOrEmail.trim() || 'Anonymous',
+      contact: donorPhoneOrEmail.trim() || 'M-Pesa Supporter',
       amount: effectiveDonationAmount,
-      method: paymentMethod,
+      method: methodLabel,
+      tillNumber: donationsTill,
+      mpesaMessage: mpesaMessageInput.trim(),
+      mpesaCode: extractedDonationCode || mpesaMessageInput.trim().slice(0, 12).toUpperCase(),
+      paymentStatus: 'verifying',
       blogTitle: post.title,
       note: donorNote.trim(),
     });
     setDonationReceipt({
-      ref: created.reference,
+      ref: created.reference || created.ref || created.id,
       amount: effectiveDonationAmount,
-      method: paymentMethod,
+      method: methodLabel,
       name: donorName.trim() || 'Supporter',
+      mpesaCode: created.mpesaCode,
     });
+    setMpesaMessageInput('');
     showToast(
-      `Thank you for donating KSh ${effectiveDonationAmount.toLocaleString()} to Serikali Guide!`
+      `Donation submitted for Admin verification (Till ${donationsTill}). Asante sana!`
     );
   };
 
@@ -1168,10 +1195,10 @@ export const BlogDetailView: React.FC<{ blogId: string }> = ({ blogId }) => {
 
                 {donationReceipt ? (
                   <div className="p-6 bg-[#F4F3EF] border border-[#1F6F43] space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <span className="text-xs font-mono-num uppercase tracking-wider text-[#1F6F43] font-semibold flex items-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>Donation Confirmed · Receipt {donationReceipt.ref}</span>
+                        <span>Recorded · Pending Admin Confirmation · {donationReceipt.ref}</span>
                       </span>
                       <button
                         type="button"
@@ -1185,12 +1212,13 @@ export const BlogDetailView: React.FC<{ blogId: string }> = ({ blogId }) => {
                       Asante Sana, {donationReceipt.name}!
                     </h4>
                     <p className="text-xs text-[#5E5D59]">
-                      We have recorded your contribution of{' '}
+                      We have logged your contribution of{' '}
                       <strong className="font-mono-num text-[#141413]">
                         KSh {donationReceipt.amount.toLocaleString()}
                       </strong>{' '}
-                      via {donationReceipt.method}. Thank you for keeping
-                      Serikali Guide independent and accessible.
+                      via {donationReceipt.method}
+                      {donationReceipt.mpesaCode ? ` (M-Pesa Code: ${donationReceipt.mpesaCode})` : ''}.
+                      Our Admin desk will confirm receipt shortly. Thank you for keeping Serikali Guide independent and free.
                     </p>
                   </div>
                 ) : (
@@ -1236,33 +1264,60 @@ export const BlogDetailView: React.FC<{ blogId: string }> = ({ blogId }) => {
                       </div>
                     </div>
 
-                    {/* Payment Method Selection */}
-                    <div>
-                      <label className="block text-xs font-mono-num uppercase tracking-wider text-[#141413] mb-2">
-                        2. Choose Payment Method
+                    {/* Lipa Na M-Pesa Buy Goods Till 9309020 Card */}
+                    <div className="space-y-3">
+                      <label className="block text-xs font-mono-num uppercase tracking-wider text-[#141413]">
+                        2. Donate via Lipa Na M-Pesa Buy Goods Till
                       </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                        {(
-                          [
-                            'M-Pesa Express',
-                            'Card / International',
-                            'PayPal',
-                          ] as const
-                        ).map((method) => (
-                          <button
-                            key={method}
-                            type="button"
-                            onClick={() => setPaymentMethod(method)}
-                            className={`py-2.5 px-3 text-xs font-medium border transition-colors cursor-pointer ${
-                              paymentMethod === method
-                                ? 'bg-[#141413] text-[#F4F3EF] border-[#141413]'
-                                : 'bg-[#F4F3EF] text-[#141413] border-[#141413]/15 hover:border-[#141413]'
-                            }`}
-                          >
-                            {method}
-                          </button>
-                        ))}
+                      <div className="bg-[#141413] text-[#F4F3EF] p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-mono-num uppercase tracking-[0.2em] text-[#D94E34] block">
+                            M-PESA BUY GOODS AND SERVICES
+                          </span>
+                          <p className="font-mono-num text-2xl sm:text-3xl font-bold tracking-wider">
+                            TILL NO: {donationsTill}
+                          </p>
+                          <p className="text-[11px] text-[#A09F99]">
+                            Go to M-Pesa → Lipa na M-Pesa → Buy Goods and Services → Enter Till{' '}
+                            <strong className="text-[#F4F3EF]">{donationsTill}</strong> (
+                            {paymentSettings.donationsTillName || 'Serikali Guide'}).
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleCopyTill}
+                          className="px-4 py-2 bg-[#D94E34] hover:bg-[#BF3E26] text-[#F4F3EF] text-xs font-mono-num uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
+                        >
+                          {copiedTill ? (
+                            <Check className="w-3.5 h-3.5" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                          <span>{copiedTill ? 'Copied Till' : `Copy ${donationsTill}`}</span>
+                        </button>
                       </div>
+                    </div>
+
+                    {/* Required Paste M-Pesa SMS / Code */}
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="block text-xs font-mono-num uppercase tracking-wider text-[#141413] font-semibold">
+                          3. Paste M-Pesa Confirmation SMS or Transaction Code *
+                        </label>
+                        {extractedDonationCode && (
+                          <span className="px-2 py-0.5 bg-[#1F6F43]/15 text-[#1F6F43] text-[10px] font-mono-num font-bold">
+                            Code Detected: {extractedDonationCode}
+                          </span>
+                        )}
+                      </div>
+                      <textarea
+                        rows={2}
+                        required
+                        value={mpesaMessageInput}
+                        onChange={(e) => setMpesaMessageInput(e.target.value)}
+                        placeholder={`Paste your M-Pesa confirmation SMS for Till ${donationsTill} (or 10-character M-Pesa receipt code)...`}
+                        className="w-full px-3.5 py-2.5 bg-[#F4F3EF] border border-[#141413]/25 text-xs font-mono-num text-[#141413] placeholder:text-[#8E8D87] focus:outline-none focus:border-[#141413]"
+                      />
                     </div>
 
                     {/* Optional Supporter Info */}
@@ -1278,11 +1333,7 @@ export const BlogDetailView: React.FC<{ blogId: string }> = ({ blogId }) => {
                         type="text"
                         value={donorPhoneOrEmail}
                         onChange={(e) => setDonorPhoneOrEmail(e.target.value)}
-                        placeholder={
-                          paymentMethod === 'M-Pesa Express'
-                            ? 'M-Pesa Phone Number (e.g. 0712...)'
-                            : 'Email for Donation Receipt'
-                        }
+                        placeholder="M-Pesa Phone or Email (Optional)"
                         className="px-3.5 py-2.5 bg-[#F4F3EF] border border-[#141413]/20 text-xs text-[#141413] placeholder:text-[#8E8D87] focus:outline-none focus:border-[#141413]"
                       />
                     </div>
@@ -1301,8 +1352,8 @@ export const BlogDetailView: React.FC<{ blogId: string }> = ({ blogId }) => {
                     >
                       <Heart className="w-4 h-4 fill-current" />
                       <span>
-                        Donate KSh {effectiveDonationAmount.toLocaleString()}{' '}
-                        Now
+                        Submit Till {donationsTill} Confirmation (KSh{' '}
+                        {effectiveDonationAmount.toLocaleString()})
                       </span>
                     </button>
                   </form>
