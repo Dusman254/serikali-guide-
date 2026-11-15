@@ -7,7 +7,7 @@ import {
   synthesizeAuthoritativeBlog,
   synthesizeAuthoritativeService,
   validateRegulatoryAccuracy,
-} from "./regulatoryKnowledge.js";
+} from "./_regulatoryKnowledge.js";
 
 export interface BlogPost {
   id: string;
